@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the recognition step editor and the on-screen region
+     picker. ALL ENGLISH: no Hindi words anywhere in this file. The
+     "rec_" prefix keeps these names clear of strings.xml. -->
+<resources>
+    <!-- Editor titles, one per recognition step type -->
+    <string name="rec_title_button">Button recognition</string>
+    <string name="rec_title_image">Image recognition</string>
+    <string name="rec_title_color">Color recognition</string>
+    <string name="rec_title_ocr">Text recognition (OCR)</string>
+
+    <!-- Section headers -->
+    <string name="rec_section_identification">Identification</string>
+    <string name="rec_section_success">Actions after successful recognition</string>
+    <string name="rec_section_retry">Actions after recognition failure: retry</string>
+    <string name="rec_section_after_retry">Actions after the retry</string>
+
+    <!-- Identification -->
+    <string name="rec_judgment_label">Judgment method</string>
+    <string name="rec_judgment_exact">Exact</string>
+    <string name="rec_judgment_partial">Partial</string>
+    <string name="rec_judgment_dialog_title">Judgment method</string>
+    <string name="rec_area_label">Recognition area</string>
+    <string name="rec_area_fullscreen">Fullscreen</string>
+    <string name="rec_area_region">Picked region</string>
+    <string name="rec_area_dialog_title">Recognition area</string>
+    <string name="rec_pick_region">Pick region on screen</string>
+    <string name="rec_region_picked">Region picked</string>
+    <string name="rec_region_not_picked">No region picked yet</string>
+
+    <!-- Button fields: button TEXT, ID and description are text, not
+         locations, so typing them is allowed (unlike coordinates). -->
+    <string name="rec_button_text_hint">Button text</string>
+    <string name="rec_button_id_hint">Button ID (optional)</string>
+    <string name="rec_button_desc_hint">Button description (optional)</string>
+    <string name="rec_button_text_help">If the button text is not picked up, it can be entered manually here.</string>
+
+    <!-- Image fields -->
+    <string name="rec_template_none">No template captured yet</string>
+    <string name="rec_template_saved">Template captured</string>
+    <string name="rec_capture_template">Capture template on screen</string>
+    <string name="rec_pick_search_region">Pick search region</string>
+
+    <!-- Color fields -->
+    <string name="rec_color_none">No color area picked yet</string>
+    <string name="rec_color_picked">Color area picked</string>
+    <string name="rec_pick_color_area">Pick color area on screen</string>
+    <string name="rec_tolerance_label">Color tolerance</string>
+
+    <!-- OCR fields -->
+    <string name="rec_ocr_match_hint">Text to find (optional)</string>
+    <string name="rec_ocr_variable_hint">Variable name</string>
+    <string name="rec_ocr_hint">Clean, large, upright text works best. Small or skewed text may read wrong.</string>
+
+    <!-- Success / after-retry choices -->
+    <string name="rec_mode_click">Perform click</string>
+    <string name="rec_mode_custom">Custom actions</string>
+    <string name="rec_mode_jump">Jump &amp; Continue</string>
+    <string name="rec_mode_ignore">Ignore</string>
+    <string name="rec_click_count_label">How many clicks</string>
+    <string name="rec_click_first">Perform a click first</string>
+    <string name="rec_add_action">Add action</string>
+    <string name="rec_no_actions">No actions yet</string>
+    <string name="rec_jump_target">Choose jump target</string>
+    <string name="rec_jump_target_dialog">Jump to step</string>
+    <string name="rec_jump_none">No jump target chosen</string>
+    <string name="rec_jump_note">Execution continues from that step.</string>
+    <string name="rec_jump_no_steps">Add another step to the workflow first</string>
+
+    <!-- Retry -->
+    <string name="rec_retry_actions_label">Actions before retrying</string>
+    <string name="rec_retry_count_label">Retries</string>
+    <string name="rec_retry_delay_label">Delay between retries</string>
+
+    <!-- Sub-action add dialog -->
+    <string name="rec_add_action_title">Add action</string>
+    <string name="rec_action_tap">Tap</string>
+    <string name="rec_action_type_text">Type text</string>
+    <string name="rec_action_wait">Wait</string>
+    <string name="rec_type_swipe">Swipe</string>
+    <string name="rec_type_navigation">Navigation</string>
+    <string name="rec_type_launch_app">Launch app</string>
+    <string name="rec_type_sub_task">Sub-task</string>
+    <string name="rec_type_code">Type code</string>
+    <string name="rec_type_excel">Type Excel row</string>
+    <string name="rec_type_screenshot">Screenshot</string>
+    <string name="rec_type_paste">Paste</string>
+    <string name="rec_type_vibration">Vibration</string>
+    <string name="rec_type_sound">Sound</string>
+    <string name="rec_type_screen_off">Screen off</string>
+    <string name="rec_type_area_click">Area click</string>
+    <string name="rec_type_wait_random">Wait randomly</string>
+    <string name="rec_type_stop_task">Stop task</string>
+    <string name="rec_type_intent">Open link</string>
+    <string name="rec_type_network">Network request</string>
+    <string name="rec_type_text_title">Type text</string>
+    <string name="rec_wait_title">Wait</string>
+
+    <!-- Bottom buttons: Cancel is a CLOSE affordance, it never saves. -->
+    <string name="rec_save">Save</string>
+    <string name="rec_close">Close</string>
+    <string name="rec_delete">Delete</string>
+
+    <!-- Validation and picker messages -->
+    <string name="rec_error_button_empty">Enter button text, ID, or description</string>
+    <string name="rec_error_no_template">Capture a template first</string>
+    <string name="rec_error_no_color">Pick a color area first</string>
+    <string name="rec_error_no_region">Pick a region first</string>
+    <string name="rec_error_no_jump_target">Choose a jump target, or pick a different action</string>
+    <string name="rec_error_jump_no_steps">Add another step to the workflow first before using Jump</string>
+
+    <!-- Region picker (PickRegionActivity) -->
+    <string name="rec_pick_region_hint">Drag on screen to draw a region</string>
+    <string name="rec_pick_template_hint">Drag over the image to capture it</string>
+    <string name="rec_pick_color_hint">Drag over the area containing the color</string>
+    <string name="rec_region_too_small">Drag a larger region</string>
+    <string name="rec_capture_no_service">Accessibility service is not on, so no screenshot can be taken</string>
+    <string name="rec_capture_failed">Screenshot failed, nothing was saved</string>
+</resources>

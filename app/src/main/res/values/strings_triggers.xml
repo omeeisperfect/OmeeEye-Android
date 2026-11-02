@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for Triggers (feature 1) and Hide Mode (feature 2) only.
+     All English. Names here never duplicate strings.xml, so this file
+     can be merged without conflicts. Existing strings.xml names
+     (triggers_title, trigger_time, unhide_volume, and so on) are
+     reused directly from the layouts and code instead of redefined. -->
+<resources>
+    <!-- Triggers screen -->
+    <string name="triggers_header_new">Triggers run a workflow automatically when something happens. Use Test on any trigger to run its workflow right now.</string>
+    <string name="trigger_permissions_title">Permissions these triggers need</string>
+    <string name="trigger_perm_accessibility">Accessibility: required to run any workflow, and for volume unhide.</string>
+    <string name="trigger_perm_accessibility_btn">Open accessibility settings</string>
+    <string name="trigger_perm_notification">Notification access: required for notification triggers.</string>
+    <string name="trigger_perm_notification_btn">Open notification settings</string>
+    <string name="trigger_perm_sms">SMS permission: required for SMS triggers and SMS unhide.</string>
+    <string name="trigger_perm_sms_btn">Allow SMS permission</string>
+    <string name="trigger_perm_battery">Battery unrestricted: keeps triggers working in the background.</string>
+    <string name="trigger_perm_battery_btn">Ignore battery optimizations</string>
+    <string name="trigger_settings_open_failed">Could not open that Settings screen. Please open Settings manually.</string>
+    <string name="trigger_list_title">Your triggers</string>
+    <string name="trigger_empty">No triggers yet. Tap Add trigger to make one.</string>
+    <string name="trigger_add">Add trigger</string>
+    <string name="trigger_no_workflows">No workflows exist yet. Create a workflow first, then add a trigger for it.</string>
+    <string name="trigger_no_workflow">No workflow</string>
+    <string name="trigger_test">Test</string>
+    <string name="trigger_delete">Delete</string>
+    <string name="trigger_delete_title">Delete trigger?</string>
+    <string name="trigger_delete_confirm">This trigger will stop working. The workflow itself is not deleted.</string>
+    <string name="trigger_deleted">Trigger deleted.</string>
+    <string name="trigger_saved">Trigger saved.</string>
+    <string name="trigger_test_started">Test run started.</string>
+    <string name="trigger_test_running">A workflow is already running. Wait for it to finish, then test again.</string>
+    <string name="trigger_test_needs_accessibility">Accessibility service is not enabled. Enable it in Settings first, then test again.</string>
+    <string name="trigger_test_no_workflow">The mapped workflow no longer exists.</string>
+    <string name="trigger_enabled">Enabled</string>
+    <string name="trigger_dialog_kind">Choose trigger type</string>
+    <string name="trigger_dialog_workflow">Choose workflow</string>
+    <string name="trigger_dialog_sms_keyword">SMS keyword</string>
+    <string name="trigger_dialog_sms_hint">Keyword in the message, for example START</string>
+    <string name="trigger_keyword_empty">Enter a keyword first.</string>
+    <string name="trigger_dialog_shake">Shake sensitivity</string>
+    <string name="trigger_dialog_battery">Battery level (%)</string>
+    <string name="trigger_dialog_save_title">Save trigger</string>
+    <string name="trigger_save">Save</string>
+    <string name="trigger_pick_first">Pick one first.</string>
+    <string name="trigger_sensitivity_gentle">Gentle</string>
+    <string name="trigger_sensitivity_normal">Normal</string>
+    <string name="trigger_sensitivity_firm">Firm</string>
+    <string name="trigger_summary_time">At %1$02d:%2$02d every day</string>
+    <string name="trigger_summary_sms">SMS contains “%1$s”</string>
+    <string name="trigger_summary_notification">Notification from %1$s</string>
+    <string name="trigger_summary_shake">Shake (%1$s)</string>
+    <string name="trigger_summary_battery">Battery at or below %1$d%%</string>
+    <string name="trigger_summary_unknown">Trigger</string>
+    <string name="trigger_sms_granted">SMS permission granted.</string>
+    <string name="trigger_sms_denied">SMS permission denied. SMS triggers will not work.</string>
+    <string name="trigger_apps_empty">No launchable apps found.</string>
+
+    <!-- Trigger engine foreground service -->
+    <string name="trigger_channel_name">OmeeEye triggers</string>
+    <string name="trigger_channel_desc">Keeps triggers and the phone-lock emergency stop watching in the background.</string>
+    <string name="trigger_service_title">OmeeEye triggers are watching</string>
+    <string name="trigger_service_text">Triggers, unhide triggers, and the phone-lock stop are active.</string>
+
+    <!-- Hide screen -->
+    <string name="hide_header_new">Hide removes the app icon from the launcher. Set at least one unhide trigger before hiding, or you will need Settings &gt; Apps to open the app again.</string>
+    <string name="hide_app_button">Hide app</string>
+    <string name="hide_dialer_hint">Dialer code, for example *#1234#</string>
+    <string name="hide_sms_hint">Secret keyword in an SMS</string>
+    <string name="hide_auto_unhide_label">Time auto-unhide</string>
+    <string name="hide_auto_unhide_off">Off</string>
+    <string name="hide_auto_unhide_set">Set time</string>
+    <string name="hide_auto_unhide_format">Auto-unhide at %1$02d:%2$02d every day</string>
+    <string name="hide_save">Save</string>
+    <string name="hide_saved">Hide settings saved.</string>
+    <string name="hide_note_apps">Note: Settings &gt; Apps always still lists the app. Android does not allow any app to hide itself from there.</string>
+    <string name="hide_note_notification">Note: while triggers are watching, a low-priority OmeeEye notification may appear in the notification shade.</string>
+    <string name="hide_note_lock">Note: locking the phone (power button) stops any running script fully, with no resume.</string>
+    <string name="hide_note_volume">Note: volume unhide needs the accessibility service enabled.</string>
+    <string name="hide_note_dialer">Note: dialer-code unhide may be restricted on Android 10 and newer. Keep another unhide trigger enabled as a fallback.</string>
+</resources>

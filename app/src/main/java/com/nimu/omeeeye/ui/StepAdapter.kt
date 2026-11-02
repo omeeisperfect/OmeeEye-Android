@@ -113,6 +113,22 @@ class StepAdapter(
         StepType.NAVIGATION -> android.R.drawable.ic_menu_revert
         StepType.LAUNCH_APP -> android.R.drawable.ic_menu_send
         StepType.SUB_TASK -> android.R.drawable.ic_menu_agenda
+        StepType.TYPE_CODE -> android.R.drawable.ic_menu_save
+        StepType.TYPE_EXCEL_ROW -> android.R.drawable.ic_menu_month
+        StepType.BUTTON_RECOGNITION -> android.R.drawable.ic_menu_view
+        StepType.IMAGE_RECOGNITION -> android.R.drawable.ic_menu_gallery
+        StepType.COLOR_RECOGNITION -> android.R.drawable.ic_menu_crop
+        StepType.OCR_READ -> android.R.drawable.ic_menu_search
+        StepType.SCREENSHOT -> android.R.drawable.ic_menu_camera
+        StepType.PASTE -> android.R.drawable.ic_menu_upload
+        StepType.VIBRATION -> android.R.drawable.ic_menu_call
+        StepType.SOUND -> android.R.drawable.ic_media_play
+        StepType.SCREEN_OFF -> android.R.drawable.ic_menu_day
+        StepType.AREA_CLICK -> android.R.drawable.ic_menu_zoom
+        StepType.WAIT_RANDOM -> android.R.drawable.ic_menu_rotate
+        StepType.STOP_TASK -> android.R.drawable.ic_menu_close_clear_cancel
+        StepType.INTENT_URI -> android.R.drawable.ic_menu_share
+        StepType.NETWORK_GET -> android.R.drawable.ic_menu_compass
     }
 
     private fun titleFor(context: android.content.Context, step: Step): String =
@@ -139,5 +155,21 @@ class StepAdapter(
                     "Sub-task: $name"
                 }
             }
+            StepType.TYPE_CODE -> context.getString(R.string.step_type_code)
+            StepType.TYPE_EXCEL_ROW -> context.getString(R.string.step_type_excel_row)
+            StepType.BUTTON_RECOGNITION -> context.getString(R.string.step_button_recognition)
+            StepType.IMAGE_RECOGNITION -> context.getString(R.string.step_image_recognition)
+            StepType.COLOR_RECOGNITION -> context.getString(R.string.step_color_recognition)
+            StepType.OCR_READ -> context.getString(R.string.step_ocr_read)
+            StepType.SCREENSHOT -> context.getString(R.string.step_screenshot)
+            StepType.PASTE -> context.getString(R.string.step_paste)
+            StepType.VIBRATION -> context.getString(R.string.step_vibration)
+            StepType.SOUND -> context.getString(R.string.step_sound)
+            StepType.SCREEN_OFF -> context.getString(R.string.step_screen_off)
+            StepType.AREA_CLICK -> context.getString(R.string.step_area_click)
+            StepType.WAIT_RANDOM -> context.getString(R.string.step_wait_random)
+            StepType.STOP_TASK -> context.getString(R.string.step_stop_task)
+            StepType.INTENT_URI -> context.getString(R.string.step_intent_uri)
+            StepType.NETWORK_GET -> context.getString(R.string.step_network_get)
         }
 }

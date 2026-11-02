@@ -96,6 +96,101 @@ class AddStepBottomSheet : BottomSheetDialogFragment() {
                     StepType.SUB_TASK, false
                 )
             )
+        ),
+        Section(
+            R.string.group_recognition,
+            listOf(
+                Row(
+                    android.R.drawable.ic_menu_view,
+                    R.string.step_button_recognition, R.string.step_button_recognition_desc,
+                    StepType.BUTTON_RECOGNITION, false
+                ),
+                Row(
+                    android.R.drawable.ic_menu_gallery,
+                    R.string.step_image_recognition, R.string.step_image_recognition_desc,
+                    StepType.IMAGE_RECOGNITION, false
+                ),
+                Row(
+                    android.R.drawable.ic_menu_crop,
+                    R.string.step_color_recognition, R.string.step_color_recognition_desc,
+                    StepType.COLOR_RECOGNITION, false
+                ),
+                Row(
+                    android.R.drawable.ic_menu_search,
+                    R.string.step_ocr_read, R.string.step_ocr_read_desc,
+                    StepType.OCR_READ, false
+                )
+            )
+        ),
+        Section(
+            R.string.group_code_data,
+            listOf(
+                Row(
+                    android.R.drawable.ic_menu_save,
+                    R.string.step_type_code, R.string.step_type_code_desc,
+                    StepType.TYPE_CODE, false
+                ),
+                Row(
+                    android.R.drawable.ic_menu_month,
+                    R.string.step_type_excel_row, R.string.step_type_excel_row_desc,
+                    StepType.TYPE_EXCEL_ROW, false
+                )
+            )
+        ),
+        Section(
+            R.string.group_advanced,
+            listOf(
+                Row(
+                    android.R.drawable.ic_menu_camera,
+                    R.string.step_screenshot, R.string.step_screenshot_desc,
+                    StepType.SCREENSHOT, false
+                ),
+                Row(
+                    android.R.drawable.ic_menu_upload,
+                    R.string.step_paste, R.string.step_paste_desc,
+                    StepType.PASTE, false
+                ),
+                Row(
+                    android.R.drawable.ic_menu_call,
+                    R.string.step_vibration, R.string.step_vibration_desc,
+                    StepType.VIBRATION, false
+                ),
+                Row(
+                    android.R.drawable.ic_media_play,
+                    R.string.step_sound, R.string.step_sound_desc,
+                    StepType.SOUND, false
+                ),
+                Row(
+                    android.R.drawable.ic_menu_day,
+                    R.string.step_screen_off, R.string.step_screen_off_desc,
+                    StepType.SCREEN_OFF, false
+                ),
+                Row(
+                    android.R.drawable.ic_menu_zoom,
+                    R.string.step_area_click, R.string.step_area_click_desc,
+                    StepType.AREA_CLICK, false
+                ),
+                Row(
+                    android.R.drawable.ic_menu_rotate,
+                    R.string.step_wait_random, R.string.step_wait_random_desc,
+                    StepType.WAIT_RANDOM, false
+                ),
+                Row(
+                    android.R.drawable.ic_menu_close_clear_cancel,
+                    R.string.step_stop_task, R.string.step_stop_task_desc,
+                    StepType.STOP_TASK, false
+                ),
+                Row(
+                    android.R.drawable.ic_menu_share,
+                    R.string.step_intent_uri, R.string.step_intent_uri_desc,
+                    StepType.INTENT_URI, false
+                ),
+                Row(
+                    android.R.drawable.ic_menu_compass,
+                    R.string.step_network_get, R.string.step_network_get_desc,
+                    StepType.NETWORK_GET, false
+                )
+            )
         )
     )
 

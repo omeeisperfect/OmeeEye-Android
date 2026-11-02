@@ -10,6 +10,16 @@
     <!-- Battery exemption so a run is not killed mid-way (user grants it in Settings) -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Network request (GET only) step -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Triggers: SMS keyword trigger -->
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <!-- Triggers: restart the trigger watchers after reboot -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Hide Mode: dialer-code unhide (best effort on Android 10+, see HideActivity) -->
+    <uses-permission android:name="android.permission.PROCESS_OUTGOING_CALLS" />
+    <!-- Triggers: exact time alarms (falls back to inexact when denied) -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <application
         android:name=".ui.OmeeEyeApplication"
@@ -33,10 +43,22 @@
         <activity android:name=".ui.HistoryActivity" />
         <activity android:name=".ui.TrashActivity" />
 
-        <!-- Base-v2 section screens (placeholder content, see each activity). -->
+        <!-- Triggers / Hide / Library section screens (real since the
+             12-feature build; see each activity). -->
         <activity android:name=".ui.TriggersActivity" />
         <activity android:name=".ui.HideActivity" />
         <activity android:name=".ui.LibraryActivity" />
+
+        <!-- Recognition step editor (normal app theme). -->
+        <activity
+            android:name=".ui.RecognitionEditActivity"
+            android:exported="false" />
+
+        <!-- Translucent on-screen region/template/color picker. -->
+        <activity
+            android:name=".ui.PickRegionActivity"
+            android:theme="@style/TranslucentTheme"
+            android:exported="false" />
 
         <!-- Transparent overlay: tap anywhere to pick a point. Returns x/y, never typed. -->
         <activity
@@ -64,6 +86,54 @@
             android:name=".ui.FloatingService"
             android:exported="false"
             android:foregroundServiceType="specialUse" />
+
+        <!-- Trigger watchers (foreground service + notification listener). -->
+        <service
+            android:name=".engine.TriggerEngine"
+            android:exported="false"
+            android:foregroundServiceType="specialUse" />
+
+        <service
+            android:name=".engine.TriggerNotificationService"
+            android:exported="false"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <!-- Trigger receivers (system broadcasts / explicit intents only). -->
+        <receiver
+            android:name=".engine.SmsTriggerReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".engine.OutgoingCallReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.NEW_OUTGOING_CALL" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".engine.BootTriggerReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".engine.TimeTriggerReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".engine.AutoUnhideReceiver"
+            android:exported="false" />
 
     </application>
 

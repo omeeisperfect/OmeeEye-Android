@@ -17,14 +17,17 @@ import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.nimu.omeeeye.R
+import com.nimu.omeeeye.data.CodeLibraryStore
 import com.nimu.omeeeye.data.WorkflowStore
 import com.nimu.omeeeye.engine.WorkflowRunner
+import com.nimu.omeeeye.model.MistakeLevel
 import com.nimu.omeeeye.model.NavKey
 import com.nimu.omeeeye.model.Point
 import com.nimu.omeeeye.model.Step
 import com.nimu.omeeeye.model.StepType
 import com.nimu.omeeeye.model.Workflow
 import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * Task editor: name a workflow, order its steps, and edit each step.
@@ -59,6 +62,16 @@ class TaskEditorActivity : AppCompatActivity() {
     private var existingWorkflow: Workflow? = null
     private lateinit var workflowId: String
     private val steps: MutableList<Step> = mutableListOf()
+
+    // Data-driven repeat state (workflow-level, edited via the Data button).
+    private var dataType: String = ""
+    private var dataFileName: String = ""
+    private var startRow: Int = 1
+    private var dataRepeat: Int = 0
+
+    // Recognition / area-click edit state (-1 = creating a new step).
+    private var recogEditIndex: Int = -1
+    private var areaClickEditIndex: Int = -1
 
     // Sub-task name lookup, cached so binds never hit disk repeatedly.
     private val subTaskNames: MutableMap<String, String> = mutableMapOf()
@@ -138,6 +151,100 @@ class TaskEditorActivity : AppCompatActivity() {
             }
         }
 
+    // Recognition editor result: add the returned step, or replace the
+    // step being edited (recogEditIndex >= 0).
+    private val recogLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            val editIndex = recogEditIndex
+            recogEditIndex = -1
+            if (result.resultCode != RESULT_OK) return@registerForActivityResult
+            val json = result.data?.getStringExtra("step_json") ?: return@registerForActivityResult
+            try {
+                val step = WorkflowStore.stepFromJson(JSONObject(json))
+                if (editIndex in steps.indices) {
+                    replaceStep(editIndex, step)
+                } else {
+                    addStep(step)
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this, "Recognition step could not be loaded", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+    // Area-click region result: the region is picked on screen only.
+    private val regionLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            val editIndex = areaClickEditIndex
+            areaClickEditIndex = -1
+            if (result.resultCode != RESULT_OK) return@registerForActivityResult
+            val data = result.data ?: return@registerForActivityResult
+            val left = data.getIntExtra("left", -1)
+            val top = data.getIntExtra("top", -1)
+            val right = data.getIntExtra("right", -1)
+            val bottom = data.getIntExtra("bottom", -1)
+            if (left < 0 || top < 0 || right <= left || bottom <= top) return@registerForActivityResult
+            if (editIndex in steps.indices) {
+                val old = steps[editIndex]
+                replaceStep(
+                    editIndex,
+                    old.copy(
+                        regionLeft = left, regionTop = top,
+                        regionRight = right, regionBottom = bottom
+                    )
+                )
+            } else {
+                addStep(
+                    Step(
+                        id = WorkflowStore.newId(),
+                        type = StepType.AREA_CLICK,
+                        regionLeft = left, regionTop = top,
+                        regionRight = right, regionBottom = bottom,
+                        waitAfterMs = DEFAULT_WAIT_AFTER_MS
+                    )
+                )
+            }
+        }
+
+    // Data file picker: the chosen file is copied into internal storage
+    // (never referenced by its original path, which the app may lose).
+    private val dataLauncher =
+        registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            if (uri == null) return@registerForActivityResult
+            try {
+                val rawName = uri.lastPathSegment ?: ""
+                var ext = rawName.substringAfterLast('.', "").lowercase()
+                if (ext !in listOf("txt", "csv", "xlsx", "xls")) {
+                    ext = when (contentResolver.getType(uri)) {
+                        "text/plain" -> "txt"
+                        "text/csv", "text/comma-separated-values" -> "csv"
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" -> "xlsx"
+                        else -> ""
+                    }
+                }
+                if (ext == "xls") {
+                    Toast.makeText(this, R.string.data_xls_unsupported, Toast.LENGTH_LONG).show()
+                    return@registerForActivityResult
+                }
+                if (ext !in listOf("txt", "csv", "xlsx")) {
+                    Toast.makeText(this, R.string.data_read_failed, Toast.LENGTH_SHORT).show()
+                    return@registerForActivityResult
+                }
+                val fileName = "data_" + WorkflowStore.newId() + "." + ext
+                val outFile = java.io.File(filesDir, fileName)
+                contentResolver.openInputStream(uri)?.use { input ->
+                    outFile.outputStream().use { output -> input.copyTo(output) }
+                } ?: run {
+                    Toast.makeText(this, R.string.data_read_failed, Toast.LENGTH_SHORT).show()
+                    return@registerForActivityResult
+                }
+                dataType = if (ext == "xlsx") "EXCEL" else ext.uppercase()
+                dataFileName = fileName
+                Toast.makeText(this, R.string.data_attached, Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(this, R.string.data_read_failed, Toast.LENGTH_SHORT).show()
+            }
+        }
+
     private val recordLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode != RESULT_OK) return@registerForActivityResult
@@ -184,7 +291,13 @@ class TaskEditorActivity : AppCompatActivity() {
         val workflowIdExtra = intent.getStringExtra("workflow_id")
         existingWorkflow = workflowIdExtra?.let { WorkflowStore.get(this, it) }
         workflowId = existingWorkflow?.id ?: WorkflowStore.newId()
-        existingWorkflow?.let { steps.addAll(it.steps) }
+        existingWorkflow?.let {
+            steps.addAll(it.steps)
+            dataType = it.dataType
+            dataFileName = it.dataFileName
+            startRow = it.startRow
+            dataRepeat = it.dataRepeat
+        }
 
         val titleView = findViewById<TextView>(R.id.editor_title)
         titleView.text = existingWorkflow?.name?.ifBlank { null }
@@ -248,6 +361,7 @@ class TaskEditorActivity : AppCompatActivity() {
 
         findViewById<Button>(R.id.btn_add).setOnClickListener { openAddStepSheet() }
         findViewById<Button>(R.id.btn_cancel).setOnClickListener { finish() }
+        findViewById<Button>(R.id.btn_data).setOnClickListener { showDataDialog() }
         findViewById<Button>(R.id.btn_save).setOnClickListener { saveAndFinish() }
 
         // Back press = cancel: finish without saving. Uses the base
@@ -288,7 +402,11 @@ class TaskEditorActivity : AppCompatActivity() {
             cycles = existing?.cycles ?: 1,
             steps = steps.toList(),
             deleted = existing?.deleted ?: false,
-            updatedAt = existing?.updatedAt ?: System.currentTimeMillis()
+            updatedAt = existing?.updatedAt ?: System.currentTimeMillis(),
+            dataType = dataType,
+            dataFileName = dataFileName,
+            startRow = startRow,
+            dataRepeat = dataRepeat
         )
     }
 
@@ -335,6 +453,28 @@ class TaskEditorActivity : AppCompatActivity() {
             StepType.NAVIGATION -> showNavigationDialog(null, null)
             StepType.LAUNCH_APP -> showLaunchAppDialog(null, null)
             StepType.SUB_TASK -> showSubTaskDialog(null, null)
+            StepType.TYPE_CODE -> showSnippetPicker(null, null)
+            StepType.TYPE_EXCEL_ROW -> showMistakesPicker(null, null)
+            StepType.BUTTON_RECOGNITION,
+            StepType.IMAGE_RECOGNITION,
+            StepType.COLOR_RECOGNITION,
+            StepType.OCR_READ -> launchRecognition(null, type, -1)
+            StepType.SCREENSHOT,
+            StepType.PASTE,
+            StepType.VIBRATION,
+            StepType.SOUND,
+            StepType.SCREEN_OFF,
+            StepType.STOP_TASK -> addStep(
+                Step(
+                    id = WorkflowStore.newId(),
+                    type = type,
+                    waitAfterMs = DEFAULT_WAIT_AFTER_MS
+                )
+            )
+            StepType.AREA_CLICK -> launchAreaPick(-1)
+            StepType.WAIT_RANDOM -> showWaitRandomDialog(null, null)
+            StepType.INTENT_URI -> showUriDialog(null, null, false)
+            StepType.NETWORK_GET -> showUriDialog(null, null, true)
         }
     }
 
@@ -357,7 +497,281 @@ class TaskEditorActivity : AppCompatActivity() {
             StepType.NAVIGATION -> showNavigationDialog(step, position)
             StepType.LAUNCH_APP -> showLaunchAppDialog(step, position)
             StepType.SUB_TASK -> showSubTaskDialog(step, position)
+            StepType.TYPE_CODE -> showSnippetPicker(step, position)
+            StepType.TYPE_EXCEL_ROW -> showMistakesPicker(step, position)
+            StepType.BUTTON_RECOGNITION,
+            StepType.IMAGE_RECOGNITION,
+            StepType.COLOR_RECOGNITION,
+            StepType.OCR_READ -> launchRecognition(step, step.type, position)
+            StepType.AREA_CLICK -> launchAreaPick(position)
+            StepType.WAIT_RANDOM -> showWaitRandomDialog(step, position)
+            StepType.INTENT_URI -> showUriDialog(step, position, false)
+            StepType.NETWORK_GET -> showUriDialog(step, position, true)
+            StepType.SCREENSHOT,
+            StepType.PASTE,
+            StepType.VIBRATION,
+            StepType.SOUND,
+            StepType.SCREEN_OFF,
+            StepType.STOP_TASK -> Toast.makeText(
+                this, R.string.step_no_settings, Toast.LENGTH_SHORT
+            ).show()
         }
+    }
+
+    // ---------- New-step editors (12-feature build) ----------
+
+    /** TYPE_CODE: pick a saved snippet (code typing is always human-like). */
+    private fun showSnippetPicker(existing: Step?, position: Int?) {
+        val snippets = CodeLibraryStore.loadAll(this)
+        if (snippets.isEmpty()) {
+            AlertDialog.Builder(this)
+                .setMessage(R.string.no_snippets_yet)
+                .setPositiveButton(R.string.ok, null)
+                .show()
+            return
+        }
+        val labels = snippets.map { it.name }.toTypedArray()
+        var selected = snippets.indexOfFirst { it.id == existing?.snippetId }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.choose_snippet)
+            .setSingleChoiceItems(labels, selected) { _, which -> selected = which }
+            .setPositiveButton(R.string.ok) { _, _ ->
+                if (selected < 0) return@setPositiveButton
+                val snippetId = snippets[selected].id
+                if (existing != null && position != null) {
+                    replaceStep(position, existing.copy(snippetId = snippetId))
+                } else {
+                    addStep(
+                        Step(
+                            id = WorkflowStore.newId(),
+                            type = StepType.TYPE_CODE,
+                            snippetId = snippetId,
+                            mistakeLevel = MistakeLevel.NORMAL,
+                            waitAfterMs = DEFAULT_WAIT_AFTER_MS
+                        )
+                    )
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /** TYPE_EXCEL_ROW: mistakes level only; the row itself comes from data. */
+    private fun showMistakesPicker(existing: Step?, position: Int?) {
+        val labels = arrayOf(
+            getString(R.string.mistakes_off),
+            getString(R.string.mistakes_light),
+            getString(R.string.mistakes_normal),
+            getString(R.string.mistakes_heavy)
+        )
+        var selected = when (existing?.mistakeLevel) {
+            MistakeLevel.LIGHT -> 1
+            MistakeLevel.NORMAL -> 2
+            MistakeLevel.HEAVY -> 3
+            else -> 0
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.mistakes_title)
+            .setSingleChoiceItems(labels, selected) { _, which -> selected = which }
+            .setPositiveButton(R.string.ok) { _, _ ->
+                val level = when (selected) {
+                    1 -> MistakeLevel.LIGHT
+                    2 -> MistakeLevel.NORMAL
+                    3 -> MistakeLevel.HEAVY
+                    else -> MistakeLevel.OFF
+                }
+                if (existing != null && position != null) {
+                    replaceStep(position, existing.copy(mistakeLevel = level))
+                } else {
+                    addStep(
+                        Step(
+                            id = WorkflowStore.newId(),
+                            type = StepType.TYPE_EXCEL_ROW,
+                            mistakeLevel = level,
+                            waitAfterMs = DEFAULT_WAIT_AFTER_MS
+                        )
+                    )
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /** Recognition steps: full editor in its own activity. */
+    private fun launchRecognition(existing: Step?, type: StepType, position: Int) {
+        recogEditIndex = position
+        val intent = Intent(this, RecognitionEditActivity::class.java)
+        intent.putExtra("step_type", type.name)
+        if (existing != null) {
+            intent.putExtra("step_json", WorkflowStore.stepToJson(existing).toString())
+        }
+        val stepsJson = JSONArray()
+        steps.forEach { stepsJson.put(WorkflowStore.stepToJson(it)) }
+        intent.putExtra("workflow_steps_json", stepsJson.toString())
+        recogLauncher.launch(intent)
+    }
+
+    /** AREA_CLICK: pick the area on screen (never typed coordinates). */
+    private fun launchAreaPick(position: Int) {
+        areaClickEditIndex = position
+        val intent = Intent(this, PickRegionActivity::class.java)
+        intent.putExtra("mode", "region")
+        regionLauncher.launch(intent)
+    }
+
+    /** WAIT_RANDOM: min/max in 100 ms steps. */
+    private fun showWaitRandomDialog(existing: Step?, position: Int?) {
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            val pad = (16 * resources.displayMetrics.density).toInt()
+            setPadding(pad, pad, pad, pad)
+        }
+        val minLabel = android.widget.TextView(this).apply {
+            text = getString(R.string.wait_min_title)
+        }
+        val minPicker = NumberPicker(this).apply {
+            minValue = 0
+            maxValue = 300
+            value = ((existing?.waitMinMs ?: 0) / 100).toInt().coerceIn(0, 300)
+        }
+        val maxLabel = android.widget.TextView(this).apply {
+            text = getString(R.string.wait_max_title)
+        }
+        val maxPicker = NumberPicker(this).apply {
+            minValue = 0
+            maxValue = 300
+            value = ((existing?.waitMaxMs ?: 1000) / 100).toInt().coerceIn(0, 300)
+        }
+        layout.addView(minLabel)
+        layout.addView(minPicker)
+        layout.addView(maxLabel)
+        layout.addView(maxPicker)
+        AlertDialog.Builder(this)
+            .setTitle(R.string.step_wait_random)
+            .setView(layout)
+            .setPositiveButton(R.string.ok) { _, _ ->
+                val minMs = minPicker.value * 100L
+                var maxMs = maxPicker.value * 100L
+                if (maxMs < minMs) maxMs = minMs
+                if (existing != null && position != null) {
+                    replaceStep(position, existing.copy(waitMinMs = minMs, waitMaxMs = maxMs))
+                } else {
+                    addStep(
+                        Step(
+                            id = WorkflowStore.newId(),
+                            type = StepType.WAIT_RANDOM,
+                            waitMinMs = minMs,
+                            waitMaxMs = maxMs,
+                            waitAfterMs = DEFAULT_WAIT_AFTER_MS
+                        )
+                    )
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /** INTENT_URI / NETWORK_GET: a URI/URL is text, not a location. */
+    private fun showUriDialog(existing: Step?, position: Int?, isNetwork: Boolean) {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_TEXT_VARIATION_URI
+            setText(if (isNetwork) existing?.networkUrl ?: "" else existing?.intentUri ?: "")
+            hint = getString(
+                if (isNetwork) R.string.network_url_hint else R.string.intent_uri_hint
+            )
+            val pad = (16 * resources.displayMetrics.density).toInt()
+            setPadding(pad, pad, pad, pad)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(
+                if (isNetwork) R.string.step_network_get else R.string.step_intent_uri
+            )
+            .setView(input)
+            .setPositiveButton(R.string.ok) { _, _ ->
+                val value = input.text.toString()
+                if (existing != null && position != null) {
+                    replaceStep(
+                        position,
+                        if (isNetwork) existing.copy(networkUrl = value)
+                        else existing.copy(intentUri = value)
+                    )
+                } else {
+                    addStep(
+                        Step(
+                            id = WorkflowStore.newId(),
+                            type = if (isNetwork) StepType.NETWORK_GET else StepType.INTENT_URI,
+                            networkUrl = if (isNetwork) value else "",
+                            intentUri = if (isNetwork) "" else value,
+                            waitAfterMs = DEFAULT_WAIT_AFTER_MS
+                        )
+                    )
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /** Workflow-level data source: attach file, start row, repeat, remove. */
+    private fun showDataDialog() {
+        val message = if (dataFileName.isBlank()) {
+            getString(R.string.data_current_none)
+        } else {
+            getString(
+                R.string.data_current_format,
+                dataFileName, dataType.ifBlank { "-" }, startRow, dataRepeat
+            )
+        }
+        val items = arrayOf(
+            getString(R.string.data_attach),
+            getString(R.string.data_start_row),
+            getString(R.string.data_repeat),
+            getString(R.string.data_remove)
+        )
+        AlertDialog.Builder(this)
+            .setTitle(R.string.data_dialog_title)
+            .setMessage(message)
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> dataLauncher.launch("*/*")
+                    1 -> {
+                        val picker = NumberPicker(this).apply {
+                            minValue = 1
+                            maxValue = 10000
+                            value = startRow.coerceIn(1, 10000)
+                        }
+                        AlertDialog.Builder(this)
+                            .setTitle(R.string.start_row_title)
+                            .setView(picker)
+                            .setPositiveButton(R.string.ok) { _, _ ->
+                                startRow = picker.value
+                            }
+                            .setNegativeButton(R.string.cancel, null)
+                            .show()
+                    }
+                    2 -> {
+                        val picker = NumberPicker(this).apply {
+                            minValue = 0
+                            maxValue = 10000
+                            value = dataRepeat.coerceIn(0, 10000)
+                        }
+                        AlertDialog.Builder(this)
+                            .setTitle(R.string.repeat_title)
+                            .setView(picker)
+                            .setPositiveButton(R.string.ok) { _, _ ->
+                                dataRepeat = picker.value
+                            }
+                            .setNegativeButton(R.string.cancel, null)
+                            .show()
+                    }
+                    3 -> {
+                        dataType = ""
+                        dataFileName = ""
+                        Toast.makeText(this, R.string.data_removed, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
     }
 
     // ---------- Pick / record launches ----------

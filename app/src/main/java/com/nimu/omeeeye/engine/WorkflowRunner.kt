@@ -1,15 +1,26 @@
 package com.nimu.omeeeye.engine
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import com.nimu.omeeeye.R
+import com.nimu.omeeeye.data.CodeLibraryStore
+import com.nimu.omeeeye.data.DataSourceLoader
 import com.nimu.omeeeye.data.RunHistoryStore
 import com.nimu.omeeeye.data.WorkflowStore
+import com.nimu.omeeeye.model.AfterRetryMode
+import com.nimu.omeeeye.model.MistakeLevel
+import com.nimu.omeeeye.model.Point
 import com.nimu.omeeeye.model.Step
 import com.nimu.omeeeye.model.StepType
+import com.nimu.omeeeye.model.SuccessMode
 import com.nimu.omeeeye.model.Workflow
+import java.net.HttpURLConnection
+import java.net.URL
+import kotlin.random.Random
 
 /**
  * Runs a [Workflow] on a worker thread, delegating every physical action to
@@ -22,13 +33,34 @@ import com.nimu.omeeeye.model.Workflow
  * - Pause only holds the run between steps and during sleeps; a gesture
  *   already in flight finishes first. Stop ends the run fully — there is
  *   no resume after stop.
- * - History is recorded on every terminal outcome. For a full run,
- *   totalSteps counts every step execution (steps x cycles); for
- *   [runSingle] it is the workflow's step count with 1 (or 0) done.
+ * - History is recorded on every terminal outcome, now with step-by-step
+ *   detail (feature 11): each executed step's label, duration, status
+ *   and error reason.
  * - A SUB_TASK step runs the referenced workflow inline. Its own steps are
  *   reported through onStepChanged as they run, but count as one completed
  *   step of the parent. A cycle (same workflow id twice in one chain) or a
  *   nesting depth past 5 fails the run.
+ * - Recognition steps (Button / Image / Color / OCR) share one shape:
+ *   on success, CLICK taps the found target [Step.clickCount] times,
+ *   CUSTOM optionally taps once first ([Step.clickFirst]) then runs
+ *   [Step.customSteps], and JUMP runs [Step.customSteps] as "actions
+ *   before jumping" then jumps to [Step.jumpTarget] and continues from
+ *   that step ("Jump & Continue"). On failure the step retries
+ *   [Step.retryCount] times with [Step.retryDelayMs] between attempts,
+ *   running [Step.retrySteps] before each retry; after the retries are
+ *   exhausted, IGNORE continues, CUSTOM runs [Step.afterRetrySteps],
+ *   and JUMP runs [Step.afterRetrySteps] then jumps to
+ *   [Step.afterRetryJumpTarget]. Jump targets are validated against the
+ *   workflow's own step list; an invalid target fails the run instead
+ *   of crashing it, and a jump-loop guard caps total executions.
+ * - Data-driven runs (feature 4): when a workflow has a data source,
+ *   one iteration runs per selected row. Columns are available as
+ *   %COLUMN% variables, plus %ROW%. Start row is 1-based; with no
+ *   explicit repeat, rows run from startRow to the end with no
+ *   wrap-back; with an explicit repeat, rows wrap with modulo.
+ * - OCR variables persist for the whole run; data variables change per
+ *   row. %NAME% substitution applies to typed text, code, button text,
+ *   intent URIs and network URLs.
  */
 object WorkflowRunner {
 
@@ -44,11 +76,22 @@ object WorkflowRunner {
         object Success : StepResult()
         object Stopped : StepResult()
         class Failed(val message: String) : StepResult()
+        class Jump(val target: Int) : StepResult()
+    }
+
+    /** Detection outcome for one recognition attempt. */
+    private sealed class DetectOutcome {
+        /** Found; [point] is the tap target, or null when there is none. */
+        class Found(val point: Point?) : DetectOutcome()
+        object NotFound : DetectOutcome()
+        class HardFail(val message: String) : DetectOutcome()
     }
 
     private const val MAX_SUB_TASK_DEPTH = 5
     private const val TICK_INTERVAL_MS = 500L
     private const val SLEEP_CHUNK_MS = 100L
+    private const val MAX_STEP_EXECUTIONS = 10000
+    private const val CLICK_GAP_MS = 200L
 
     private var appContext: Context? = null
     private val listeners = mutableSetOf<Listener>()
@@ -66,6 +109,13 @@ object WorkflowRunner {
     @Volatile private var lastTickPostMs = 0L
     @Volatile private var currentWorkflowField: Workflow? = null
     @Volatile private var currentStep = -1
+
+    // Per-run state, reset in beginRun.
+    private val dataVariables = mutableMapOf<String, String>()
+    private val runVariables = mutableMapOf<String, String>()
+    private var currentDataRowValues: List<String> = emptyList()
+    private var currentDataRowColumns: List<String> = emptyList()
+    private val stepLogs = mutableListOf<RunHistoryStore.StepLog>()
 
     fun init(context: Context) {
         appContext = context.applicationContext
@@ -87,8 +137,9 @@ object WorkflowRunner {
 
     /**
      * Runs exactly one step of [workflow]: same step logic as a full run,
-     * but no cycles and no waitAfterMs afterwards. Ignored while another
-     * run is active.
+     * but no cycles and no waitAfterMs afterwards. A jump result from a
+     * recognition step counts as finished here (a single step cannot
+     * continue anywhere). Ignored while another run is active.
      */
     fun runSingle(workflow: Workflow, stepIndex: Int) {
         if (!beginRun(workflow)) return
@@ -149,6 +200,11 @@ object WorkflowRunner {
             runStartMs = SystemClock.elapsedRealtime()
             lastTickPostMs = runStartMs
         }
+        dataVariables.clear()
+        runVariables.clear()
+        currentDataRowValues = emptyList()
+        currentDataRowColumns = emptyList()
+        stepLogs.clear()
         Thread({ tickerLoop() }, "omeeeye-ticker").start()
         return true
     }
@@ -158,43 +214,121 @@ object WorkflowRunner {
     // ------------------------------------------------------------------
 
     private fun runWorkflow(workflow: Workflow) {
-        val cycles = workflow.cycles.coerceAtLeast(1)
-        val totalSteps = workflow.steps.size * cycles
         if (AutomationService.instance == null) {
-            finish(workflow, Status.FAILED, noServiceMessage(), 0, totalSteps)
+            finish(workflow, Status.FAILED, noServiceMessage(), 0, workflow.steps.size)
             return
         }
+        // Resolve data iterations first: null entries mean "no data row"
+        // (plain cycles); a map entry means "run once for this row".
+        val iterations: List<Map<String, String>?>
+        val totalSteps: Int
+        if (workflow.dataType.isNotBlank()) {
+            val ctx = appContext
+            if (ctx == null) {
+                finish(workflow, Status.FAILED, noServiceMessage(), 0, workflow.steps.size)
+                return
+            }
+            val loaded = DataSourceLoader.load(ctx, workflow)
+            if (loaded.error != null) {
+                finish(
+                    workflow, Status.FAILED,
+                    dataErrorMessage(loaded.error), 0, workflow.steps.size
+                )
+                return
+            }
+            val rows = loaded.rows
+            if (rows.isEmpty()) {
+                finish(
+                    workflow, Status.FAILED,
+                    dataErrorMessage("Data file is empty"), 0, workflow.steps.size
+                )
+                return
+            }
+            val startIndex = workflow.startRow - 1
+            if (startIndex < 0 || startIndex >= rows.size) {
+                finish(
+                    workflow, Status.FAILED,
+                    dataErrorMessage("Start row is beyond the data file"),
+                    0, workflow.steps.size
+                )
+                return
+            }
+            iterations = if (workflow.dataRepeat > 0) {
+                (0 until workflow.dataRepeat).map { offset ->
+                    rows[(startIndex + offset) % rows.size]
+                }
+            } else {
+                rows.subList(startIndex, rows.size)
+            }
+            totalSteps = workflow.steps.size * iterations.size
+        } else {
+            val cycles = workflow.cycles.coerceAtLeast(1)
+            iterations = List(cycles) { null }
+            totalSteps = workflow.steps.size * cycles
+        }
+
         var stepsDone = 0
         var failure: String? = null
         var stopped = false
-        outer@ for (cycle in 0 until cycles) {
-            if (cycle > 0) {
+        var executions = 0
+        outer@ for ((iterationIndex, row) in iterations.withIndex()) {
+            if (iterationIndex > 0) {
                 if (!sleepPausable(workflow.cycleIntervalMs)) {
                     stopped = true
                     break
                 }
             }
-            for ((index, step) in workflow.steps.withIndex()) {
+            applyDataRow(row)
+            var index = 0
+            while (index < workflow.steps.size) {
                 if (!waitIfPaused()) {
                     stopped = true
                     break@outer
                 }
+                val step = workflow.steps[index]
                 currentStep = index
                 postStepChanged(index, workflow.steps.size, step)
                 postTick()
-                when (val result = executeStep(step, index, listOf(workflow.id), 0)) {
+                val stepStart = SystemClock.elapsedRealtime()
+                val result = executeStep(step, index, listOf(workflow.id), 0)
+                val duration = SystemClock.elapsedRealtime() - stepStart
+                executions++
+                if (executions > MAX_STEP_EXECUTIONS) {
+                    failure = jumpLoopMessage()
+                    logStep(index, step, duration, "FAILED", failure)
+                    break@outer
+                }
+                when (result) {
                     is StepResult.Success -> {
                         stepsDone++
+                        logStep(index, step, duration, "OK", "")
                         if (!sleepPausable(step.waitAfterMs)) {
                             stopped = true
                             break@outer
                         }
+                        index++
+                    }
+                    is StepResult.Jump -> {
+                        if (result.target !in workflow.steps.indices) {
+                            logStep(index, step, duration, "FAILED", invalidJumpMessage())
+                            failure = invalidJumpMessage()
+                            break@outer
+                        }
+                        stepsDone++
+                        logStep(index, step, duration, "OK", "")
+                        if (!sleepPausable(step.waitAfterMs)) {
+                            stopped = true
+                            break@outer
+                        }
+                        index = result.target
                     }
                     is StepResult.Stopped -> {
+                        logStep(index, step, duration, "STOPPED", "")
                         stopped = true
                         break@outer
                     }
                     is StepResult.Failed -> {
+                        logStep(index, step, duration, "FAILED", result.message)
                         failure = result.message
                         break@outer
                     }
@@ -206,6 +340,18 @@ object WorkflowRunner {
             failure != null -> finish(workflow, Status.FAILED, failure, stepsDone, totalSteps)
             else -> finish(workflow, Status.FINISHED, null, stepsDone, totalSteps)
         }
+    }
+
+    private fun applyDataRow(row: Map<String, String>?) {
+        dataVariables.clear()
+        currentDataRowValues = emptyList()
+        currentDataRowColumns = emptyList()
+        if (row == null) return
+        // Keep column order stable: data rows are LinkedHashMaps.
+        val columns = row.keys.filter { it != "ROW" }
+        currentDataRowColumns = columns
+        currentDataRowValues = columns.map { row[it] ?: "" }
+        dataVariables.putAll(row)
     }
 
     // ------------------------------------------------------------------
@@ -230,14 +376,39 @@ object WorkflowRunner {
         currentStep = stepIndex
         postStepChanged(stepIndex, totalSteps, step)
         postTick()
+        val stepStart = SystemClock.elapsedRealtime()
         when (val result = executeStep(step, stepIndex, listOf(workflow.id), 0)) {
-            is StepResult.Success ->
+            is StepResult.Success, is StepResult.Jump -> {
+                logStep(stepIndex, step, SystemClock.elapsedRealtime() - stepStart, "OK", "")
                 finish(workflow, Status.FINISHED, null, 1, totalSteps)
-            is StepResult.Stopped ->
+            }
+            is StepResult.Stopped -> {
+                logStep(stepIndex, step, SystemClock.elapsedRealtime() - stepStart, "STOPPED", "")
                 finish(workflow, Status.STOPPED, null, 0, totalSteps)
-            is StepResult.Failed ->
+            }
+            is StepResult.Failed -> {
+                logStep(stepIndex, step, SystemClock.elapsedRealtime() - stepStart, "FAILED", result.message)
                 finish(workflow, Status.FAILED, result.message, 0, totalSteps)
+            }
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Variables
+    // ------------------------------------------------------------------
+
+    /** Replaces %NAME% placeholders from data-row and run variables. */
+    fun substitute(text: String): String {
+        var out = text
+        for ((key, value) in dataVariables) {
+            out = out.replace("%$key%", value)
+            out = out.replace("%${key.uppercase()}%", value)
+        }
+        for ((key, value) in runVariables) {
+            out = out.replace("%$key%", value)
+            out = out.replace("%${key.uppercase()}%", value)
+        }
+        return out
     }
 
     // ------------------------------------------------------------------
@@ -271,7 +442,13 @@ object WorkflowRunner {
                 else StepResult.Failed(failMessage(index, "Swipe failed"))
             }
             StepType.TYPE_TEXT -> {
-                if (service.typeText(step.text)) StepResult.Success
+                val text = substitute(step.text)
+                val ok = if (step.mistakeLevel != MistakeLevel.OFF) {
+                    service.typeHuman(text, step.mistakeLevel)
+                } else {
+                    service.typeText(text)
+                }
+                if (ok) StepResult.Success
                 else StepResult.Failed(failMessage(index, "Type failed"))
             }
             StepType.WAIT -> {
@@ -292,6 +469,140 @@ object WorkflowRunner {
                 else StepResult.Failed(failMessage(index, "App launch failed"))
             }
             StepType.SUB_TASK -> executeSubTask(step, index, chain, depth)
+            StepType.TYPE_CODE -> {
+                val ctx = appContext
+                    ?: return StepResult.Failed(failMessage(index, "Snippet not found"))
+                val snippet = CodeLibraryStore.get(ctx, step.snippetId)
+                    ?: return StepResult.Failed(
+                        failMessage(index, stringOr(R.string.run_no_snippet, "Code snippet not found"))
+                    )
+                // Code typing is always human-like; the step's level
+                // defaults to NORMAL in the editor.
+                val level = if (step.mistakeLevel == MistakeLevel.OFF) {
+                    MistakeLevel.NORMAL
+                } else {
+                    step.mistakeLevel
+                }
+                if (service.typeHuman(substitute(snippet.code), level)) {
+                    StepResult.Success
+                } else {
+                    StepResult.Failed(failMessage(index, "Type failed"))
+                }
+            }
+            StepType.TYPE_EXCEL_ROW -> {
+                if (currentDataRowValues.isEmpty()) {
+                    return StepResult.Failed(
+                        failMessage(
+                            index,
+                            stringOr(R.string.run_no_data_row, "No data row attached to this step")
+                        )
+                    )
+                }
+                if (service.typeExcelRow(currentDataRowValues, step.mistakeLevel)) {
+                    StepResult.Success
+                } else {
+                    StepResult.Failed(failMessage(index, "Excel row typing failed"))
+                }
+            }
+            StepType.BUTTON_RECOGNITION,
+            StepType.IMAGE_RECOGNITION,
+            StepType.COLOR_RECOGNITION,
+            StepType.OCR_READ -> executeRecognition(step, index, chain, depth)
+            StepType.SCREENSHOT -> {
+                val path = service.takeScreenshotSave()
+                if (path != null) StepResult.Success
+                else StepResult.Failed(
+                    failMessage(
+                        index,
+                        stringOr(R.string.run_screenshot_failed, "Screenshot failed")
+                    )
+                )
+            }
+            StepType.PASTE -> {
+                if (service.pasteClipboard()) StepResult.Success
+                else StepResult.Failed(failMessage(index, "Paste failed"))
+            }
+            StepType.VIBRATION -> {
+                service.vibrate(300)
+                StepResult.Success
+            }
+            StepType.SOUND -> {
+                service.beep()
+                StepResult.Success
+            }
+            StepType.SCREEN_OFF -> {
+                if (service.lockScreen()) StepResult.Success
+                else StepResult.Failed(failMessage(index, "Screen lock failed"))
+            }
+            StepType.AREA_CLICK -> {
+                val region = step.region()
+                    ?: return StepResult.Failed(failMessage(index, "No area picked"))
+                val point = Point(
+                    Random.nextInt(region.left, region.right + 1),
+                    Random.nextInt(region.top, region.bottom + 1)
+                )
+                if (service.tap(point)) StepResult.Success
+                else StepResult.Failed(failMessage(index, "Area click failed"))
+            }
+            StepType.WAIT_RANDOM -> {
+                val min = step.waitMinMs.coerceAtLeast(0)
+                val max = step.waitMaxMs.coerceAtLeast(min)
+                val delay = if (max > min) Random.nextLong(min, max + 1) else min
+                if (sleepPausable(delay)) StepResult.Success else StepResult.Stopped
+            }
+            StepType.STOP_TASK -> StepResult.Stopped
+            StepType.INTENT_URI -> {
+                val uri = substitute(step.intentUri)
+                if (uri.isBlank()) {
+                    return StepResult.Failed(failMessage(index, "Missing intent URI"))
+                }
+                try {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri)).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    appContext?.startActivity(intent)
+                    StepResult.Success
+                } catch (e: Exception) {
+                    StepResult.Failed(failMessage(index, "Could not open intent"))
+                }
+            }
+            StepType.NETWORK_GET -> executeNetworkGet(step, index)
+        }
+    }
+
+    private fun executeNetworkGet(step: Step, index: Int): StepResult {
+        val urlText = substitute(step.networkUrl)
+        if (urlText.isBlank()) {
+            return StepResult.Failed(failMessage(index, "Missing URL"))
+        }
+        return try {
+            val connection = URL(urlText).openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 10000
+            connection.readTimeout = 10000
+            try {
+                val code = connection.responseCode
+                if (code in 200..299) {
+                    StepResult.Success
+                } else {
+                    StepResult.Failed(
+                        failMessage(
+                            index,
+                            stringOr(R.string.run_network_failed, "Network request failed") +
+                                " ($code)"
+                        )
+                    )
+                }
+            } finally {
+                connection.disconnect()
+            }
+        } catch (e: Exception) {
+            StepResult.Failed(
+                failMessage(
+                    index,
+                    stringOr(R.string.run_network_failed, "Network request failed")
+                )
+            )
         }
     }
 
@@ -326,8 +637,264 @@ object WorkflowRunner {
                 is StepResult.Success -> {
                     if (!sleepPausable(subStep.waitAfterMs)) return StepResult.Stopped
                 }
+                is StepResult.Jump -> {
+                    // Jumps inside a sub-task never redirect the parent:
+                    // the jumped-to step is outside this list's scope.
+                    // Treat as completed and continue with the next step.
+                    if (!sleepPausable(subStep.waitAfterMs)) return StepResult.Stopped
+                }
                 is StepResult.Stopped -> return StepResult.Stopped
                 is StepResult.Failed -> return result // Inner message already formatted.
+            }
+        }
+        return StepResult.Success
+    }
+
+    // ------------------------------------------------------------------
+    // Recognition: shared success / retry / after-retry shape
+    // ------------------------------------------------------------------
+
+    private fun executeRecognition(
+        step: Step,
+        index: Int,
+        chain: List<String>,
+        depth: Int
+    ): StepResult {
+        val service = AutomationService.instance
+            ?: return StepResult.Failed(
+                failMessage(index, "Accessibility service is not available")
+            )
+        val region = if (step.areaMode == com.nimu.omeeeye.model.AreaMode.REGION) {
+            step.region()
+        } else {
+            null
+        }
+        // Image templates are loaded once, not on every retry.
+        val templateBitmap = if (step.type == StepType.IMAGE_RECOGNITION) {
+            if (step.templatePath.isBlank()) {
+                return StepResult.Failed(failMessage(index, "No image template"))
+            }
+            service.loadTemplateBitmap(step.templatePath)
+                ?: return StepResult.Failed(failMessage(index, "Image template not found"))
+        } else {
+            null
+        }
+
+        val detect: () -> DetectOutcome = {
+            when (step.type) {
+                StepType.BUTTON_RECOGNITION -> {
+                    val bounds = service.findNodeByText(
+                        substitute(step.matchText),
+                        step.matchMode,
+                        step.buttonId,
+                        step.buttonDesc,
+                        region
+                    )
+                    if (bounds != null) {
+                        DetectOutcome.Found(Point(bounds.centerX(), bounds.centerY()))
+                    } else {
+                        DetectOutcome.NotFound
+                    }
+                }
+                StepType.IMAGE_RECOGNITION -> {
+                    val shot = service.takeScreenshotBitmap()
+                    if (shot == null) {
+                        DetectOutcome.HardFail(
+                            failMessage(
+                                index,
+                                stringOr(R.string.run_screenshot_failed, "Screenshot failed")
+                            )
+                        )
+                    } else {
+                        val point = service.findImageInBitmap(shot, templateBitmap!!, region)
+                        shot.recycle()
+                        if (point != null) DetectOutcome.Found(point)
+                        else DetectOutcome.NotFound
+                    }
+                }
+                StepType.COLOR_RECOGNITION -> {
+                    val shot = service.takeScreenshotBitmap()
+                    if (shot == null) {
+                        DetectOutcome.HardFail(
+                            failMessage(
+                                index,
+                                stringOr(R.string.run_screenshot_failed, "Screenshot failed")
+                            )
+                        )
+                    } else {
+                        val point = service.findColorInBitmap(
+                            shot, step.colorValue, step.colorTolerance, region
+                        )
+                        shot.recycle()
+                        if (point != null) DetectOutcome.Found(point)
+                        else DetectOutcome.NotFound
+                    }
+                }
+                StepType.OCR_READ -> {
+                    val shot = service.takeScreenshotBitmap()
+                    if (shot == null) {
+                        DetectOutcome.HardFail(
+                            failMessage(
+                                index,
+                                stringOr(R.string.run_screenshot_failed, "Screenshot failed")
+                            )
+                        )
+                    } else {
+                        val result = OcrEngine.read(shot, region?.let {
+                            android.graphics.Rect(it.left, it.top, it.right, it.bottom)
+                        })
+                        shot.recycle()
+                        val text = result.text
+                        val wanted = substitute(step.matchText).trim()
+                        val found = if (wanted.isEmpty()) {
+                            text.isNotEmpty()
+                        } else if (step.matchMode == com.nimu.omeeeye.model.MatchMode.EXACT) {
+                            text.equals(wanted, ignoreCase = true)
+                        } else {
+                            text.contains(wanted, ignoreCase = true)
+                        }
+                        if (found) {
+                            runVariables[step.ocrVariable.ifBlank { "OCR_TEXT" }] = text
+                            val point = result.bounds?.let {
+                                Point(it.centerX(), it.centerY())
+                            } ?: region?.center()
+                            DetectOutcome.Found(point)
+                        } else {
+                            DetectOutcome.NotFound
+                        }
+                    }
+                }
+                else -> DetectOutcome.NotFound
+            }
+        }
+
+        var attempt = 0
+        while (true) {
+            when (val outcome = detect()) {
+                is DetectOutcome.HardFail -> return StepResult.Failed(outcome.message)
+                is DetectOutcome.Found -> {
+                    return when (step.successMode) {
+                        SuccessMode.CLICK -> {
+                            val point = outcome.point
+                            if (point != null) {
+                                repeat(step.clickCount.coerceAtLeast(1)) {
+                                    if (!service.tap(point)) {
+                                        return StepResult.Failed(
+                                            failMessage(index, "Tap failed")
+                                        )
+                                    }
+                                    if (!sleepPausable(CLICK_GAP_MS)) {
+                                        return StepResult.Stopped
+                                    }
+                                }
+                            }
+                            StepResult.Success
+                        }
+                        SuccessMode.CUSTOM -> {
+                            if (step.clickFirst && outcome.point != null) {
+                                if (!service.tap(outcome.point)) {
+                                    return StepResult.Failed(
+                                        failMessage(index, "Tap failed")
+                                    )
+                                }
+                            }
+                            executeEmbedded(step.customSteps, index, chain, depth)
+                        }
+                        SuccessMode.JUMP -> {
+                            when (val pre = executeEmbedded(step.customSteps, index, chain, depth)) {
+                                is StepResult.Success -> {
+                                    if (step.jumpTarget < 0) {
+                                        StepResult.Failed(
+                                            failMessage(
+                                                index,
+                                                stringOr(
+                                                    R.string.run_invalid_jump,
+                                                    "Invalid jump target"
+                                                )
+                                            )
+                                        )
+                                    } else {
+                                        StepResult.Jump(step.jumpTarget)
+                                    }
+                                }
+                                else -> pre
+                            }
+                        }
+                    }
+                }
+                is DetectOutcome.NotFound -> {
+                    if (attempt < step.retryCount.coerceAtLeast(0)) {
+                        when (val pre = executeEmbedded(step.retrySteps, index, chain, depth)) {
+                            is StepResult.Success -> {
+                                // Continue to the next attempt below.
+                            }
+                            else -> return pre
+                        }
+                        if (!sleepPausable(step.retryDelayMs.coerceAtLeast(0))) {
+                            return StepResult.Stopped
+                        }
+                        attempt++
+                    } else {
+                        return when (step.afterRetryMode) {
+                            AfterRetryMode.IGNORE -> StepResult.Success
+                            AfterRetryMode.CUSTOM -> {
+                                executeEmbedded(step.afterRetrySteps, index, chain, depth)
+                            }
+                            AfterRetryMode.JUMP -> {
+                                when (
+                                    val pre = executeEmbedded(
+                                        step.afterRetrySteps, index, chain, depth
+                                    )
+                                ) {
+                                    is StepResult.Success -> {
+                                        if (step.afterRetryJumpTarget < 0) {
+                                            StepResult.Failed(
+                                                failMessage(
+                                                    index,
+                                                    stringOr(
+                                                        R.string.run_invalid_jump,
+                                                        "Invalid jump target"
+                                                    )
+                                                )
+                                            )
+                                        } else {
+                                            StepResult.Jump(step.afterRetryJumpTarget)
+                                        }
+                                    }
+                                    else -> pre
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Runs embedded sub-actions inline. A Jump inside a sub-action list
+     * is ignored (sub-actions never redirect the parent run); Stopped
+     * and Failed propagate.
+     */
+    private fun executeEmbedded(
+        steps: List<Step>,
+        parentIndex: Int,
+        chain: List<String>,
+        depth: Int
+    ): StepResult {
+        if (depth >= MAX_SUB_TASK_DEPTH) {
+            return StepResult.Failed(
+                failMessage(parentIndex, "Sub-action depth limit reached")
+            )
+        }
+        for ((subIndex, subStep) in steps.withIndex()) {
+            if (!waitIfPaused()) return StepResult.Stopped
+            when (val result = executeStep(subStep, subIndex, chain, depth + 1)) {
+                is StepResult.Success, is StepResult.Jump -> {
+                    if (!sleepPausable(subStep.waitAfterMs)) return StepResult.Stopped
+                }
+                is StepResult.Stopped -> return StepResult.Stopped
+                is StepResult.Failed -> return result
             }
         }
         return StepResult.Success
@@ -425,11 +992,33 @@ object WorkflowRunner {
             lock.notifyAll()
         }
         appContext?.let { ctx ->
-            RunHistoryStore.record(ctx, workflow.name, status.name, stepsDone, totalSteps)
+            RunHistoryStore.recordDetail(
+                ctx, workflow.name, status.name, stepsDone, totalSteps,
+                stepLogs.toList(), message ?: ""
+            )
         }
         mainHandler.post {
             snapshotListeners().forEach { it.onFinished(status, message) }
         }
+    }
+
+    private fun logStep(
+        index: Int,
+        step: Step,
+        durationMs: Long,
+        status: String,
+        error: String
+    ) {
+        val detail = when (step.type) {
+            StepType.TYPE_TEXT -> step.text.take(30)
+            StepType.BUTTON_RECOGNITION, StepType.OCR_READ -> step.matchText.take(30)
+            StepType.TYPE_CODE -> step.snippetId.take(20)
+            else -> ""
+        }
+        val label = if (detail.isBlank()) step.type.name else "${step.type.name}: $detail"
+        stepLogs.add(
+            RunHistoryStore.StepLog(index, label, durationMs, status, error)
+        )
     }
 
     private fun postStepChanged(index: Int, total: Int, step: Step) {
@@ -450,6 +1039,23 @@ object WorkflowRunner {
 
     private fun noServiceMessage(): String? =
         appContext?.getString(R.string.run_failed_no_service)
+
+    private fun dataErrorMessage(detail: String): String =
+        stringOr(R.string.run_data_failed, "Data file could not be loaded") +
+            ": " + detail
+
+    private fun invalidJumpMessage(): String =
+        stringOr(R.string.run_invalid_jump, "Invalid jump target")
+
+    private fun jumpLoopMessage(): String =
+        stringOr(R.string.run_jump_loop, "Jump loop detected")
+
+    private fun stringOr(resId: Int, fallback: String): String =
+        try {
+            appContext?.getString(resId) ?: fallback
+        } catch (e: Exception) {
+            fallback
+        }
 
     /** "Step N failed: <reason>" using the existing string resource. */
     private fun failMessage(index: Int, reason: String): String =

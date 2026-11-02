@@ -1,6 +1,7 @@
 package com.nimu.omeeeye.ui
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -11,6 +12,8 @@ import android.widget.ImageButton
 import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -35,6 +38,10 @@ class MainActivity : AppCompatActivity() {
         private const val MENU_HISTORY = 2
         private const val MENU_SETTINGS = 3
         private const val MENU_TRASH = 4
+        // Workflow tools (feature 12), appended after the existing items.
+        // Duplicate already exists per workflow card and is untouched.
+        private const val MENU_EXPORT = 5
+        private const val MENU_IMPORT = 6
     }
 
     private lateinit var workflowList: RecyclerView
@@ -44,6 +51,24 @@ class MainActivity : AppCompatActivity() {
 
     private var allWorkflows: List<Workflow> = emptyList()
     private var searchQuery: String = ""
+
+    // Workflow tools (feature 12): the workflow chosen in the picker
+    // while the system file picker is open, and the two launchers.
+    private var pendingExport: Workflow? = null
+
+    private val exportLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+            val workflow = pendingExport
+            pendingExport = null
+            if (uri == null || workflow == null) return@registerForActivityResult
+            writeExport(uri, workflow)
+        }
+
+    private val importLauncher =
+        registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            if (uri == null) return@registerForActivityResult
+            importWorkflow(uri)
+        }
 
     private var sortMode: String
         get() = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
@@ -131,6 +156,8 @@ class MainActivity : AppCompatActivity() {
             popup.menu.add(0, MENU_HISTORY, 1, R.string.menu_history)
             popup.menu.add(0, MENU_SETTINGS, 2, R.string.menu_settings)
             popup.menu.add(0, MENU_TRASH, 3, R.string.menu_trash)
+            popup.menu.add(0, MENU_EXPORT, 4, R.string.menu_export)
+            popup.menu.add(0, MENU_IMPORT, 5, R.string.menu_import)
             popup.setOnMenuItemClickListener { item ->
                 when (item.itemId) {
                     MENU_SORT -> {
@@ -149,6 +176,19 @@ class MainActivity : AppCompatActivity() {
                     }
                     MENU_TRASH -> {
                         startActivity(Intent(this, TrashActivity::class.java))
+                        true
+                    }
+                    MENU_EXPORT -> {
+                        showExportPicker()
+                        true
+                    }
+                    MENU_IMPORT -> {
+                        // "*/*": exported .omeeeye.json files are often
+                        // reported as application/octet-stream, which an
+                        // "application/json" filter would hide. The JSON
+                        // is still validated after reading, so a wrong
+                        // file only produces a clean failure toast.
+                        importLauncher.launch("*/*")
                         true
                     }
                     else -> false
@@ -180,6 +220,76 @@ class MainActivity : AppCompatActivity() {
         }
         findViewById<View>(R.id.nav_settings).setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
+        }
+    }
+
+    // ---------- Workflow tools: Export / Import (feature 12) ----------
+
+    /** Picker of active workflows, then the system file picker. */
+    private fun showExportPicker() {
+        val workflows = WorkflowStore.loadActive(this)
+        if (workflows.isEmpty()) {
+            Toast.makeText(this, R.string.tools_no_workflows, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val names = workflows.map { it.name }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle(R.string.tools_choose_workflow)
+            .setItems(names) { _, which ->
+                val workflow = workflows[which]
+                pendingExport = workflow
+                // Slashes would break a file name; anything else is kept.
+                val safeName = workflow.name
+                    .replace('/', '_').replace('\\', '_')
+                    .ifBlank { "workflow" }
+                exportLauncher.launch("$safeName.omeeeye.json")
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /**
+     * Writes ONLY workflow data (name, steps, data fields) as JSON.
+     * No personal data and no device info is ever in a workflow object,
+     * so nothing else can leak into the file.
+     */
+    private fun writeExport(uri: Uri, workflow: Workflow) {
+        try {
+            contentResolver.openOutputStream(uri)?.use { out ->
+                out.write(WorkflowStore.workflowToJson(workflow).toString().toByteArray())
+            } ?: throw IllegalStateException("No output stream")
+            Toast.makeText(this, R.string.tools_exported, Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, R.string.tools_export_failed, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * Imports one workflow from JSON. The imported workflow always gets
+     * a FRESH id, so an import can never overwrite an existing workflow.
+     * Data fields (dataType, dataFileName, startRow, dataRepeat) are kept
+     * exactly as exported, even if dataFileName points to a file that does
+     * not exist on this phone — they are NOT silently dropped. If the
+     * user runs such a workflow, the runner fails cleanly at that point
+     * (its data file cannot be loaded), instead of the import lying
+     * about what was imported.
+     */
+    private fun importWorkflow(uri: Uri) {
+        try {
+            val text = contentResolver.openInputStream(uri)?.bufferedReader()
+                ?.use { it.readText() } ?: throw IllegalStateException("No input")
+            val imported = WorkflowStore.stepWorkflowFromJson(
+                org.json.JSONObject(text)
+            )
+            val fresh = imported.copy(
+                id = WorkflowStore.newId(),
+                deleted = false
+            )
+            WorkflowStore.save(this, fresh)
+            Toast.makeText(this, R.string.tools_imported, Toast.LENGTH_SHORT).show()
+            reload()
+        } catch (e: Exception) {
+            Toast.makeText(this, R.string.tools_import_failed, Toast.LENGTH_SHORT).show()
         }
     }
 

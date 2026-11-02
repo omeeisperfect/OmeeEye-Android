@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the Code Library screen (feature 3), the run-history
+     step detail (feature 11), and workflow Export / Import (feature 12).
+     Every string here is English only. -->
+<resources>
+    <!-- Code Library -->
+    <string name="library_header">Snippets saved here are typed by the Type code step in a workflow. This screen only manages the library; the step itself is set up in the task editor.</string>
+    <string name="library_add">Add snippet</string>
+    <string name="library_add_title">New snippet</string>
+    <string name="library_edit_title">Edit snippet</string>
+    <string name="library_name_hint">Snippet name</string>
+    <string name="library_code_hint">Code</string>
+    <string name="library_save">Save</string>
+    <string name="library_delete">Delete</string>
+    <string name="library_delete_title">Delete snippet?</string>
+    <string name="library_delete_message">Delete \"%1$s\"? This cannot be undone.</string>
+    <string name="library_name_required">Enter a snippet name.</string>
+    <string name="library_code_required">Enter some code.</string>
+    <string name="library_snippet_saved">Snippet saved.</string>
+    <string name="library_snippet_deleted">Snippet deleted.</string>
+
+    <!-- Run history detail -->
+    <string name="history_no_step_detail">No step detail for this run.</string>
+    <string name="history_step_line">Step %1$d: %2$s — %3$d ms — %4$s</string>
+    <string name="history_error_line">Error: %1$s</string>
+
+    <!-- Workflow tools: Export / Import -->
+    <string name="menu_export">Export workflow</string>
+    <string name="menu_import">Import workflow</string>
+    <string name="tools_choose_workflow">Choose a workflow</string>
+    <string name="tools_no_workflows">No workflows yet.</string>
+    <string name="tools_exported">Workflow exported.</string>
+    <string name="tools_export_failed">Export failed.</string>
+    <string name="tools_imported">Workflow imported.</string>
+    <string name="tools_import_failed">Import failed. The file is not a valid workflow.</string>
+</resources>

@@ -11,3 +11,6 @@ captures
 local.properties
 *.apk
 *.aab
+
+# Shared debug keystore: never commit the real key file.
+app/debug.keystore

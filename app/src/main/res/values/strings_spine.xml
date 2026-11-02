@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the shared spine (runner, recognition, data, Excel).
+     Feature screens keep their own strings files; nothing here is Hindi. -->
+<resources>
+    <string name="run_no_data_row">No data row attached to this step</string>
+    <string name="run_no_snippet">Code snippet not found</string>
+    <string name="run_button_not_found">Button not found</string>
+    <string name="run_image_not_found">Image not found</string>
+    <string name="run_color_not_found">Color not found</string>
+    <string name="run_text_not_found">Text not found</string>
+    <string name="run_screenshot_failed">Screenshot failed</string>
+    <string name="run_invalid_jump">Invalid jump target</string>
+    <string name="run_jump_loop">Jump loop detected</string>
+    <string name="run_network_failed">Network request failed</string>
+    <string name="run_data_failed">Data file could not be loaded</string>
+    <!-- ADD-menu groups -->
+    <string name="group_recognition">Recognition</string>
+    <string name="group_code_data">Code and data</string>
+    <string name="group_advanced">Advanced actions</string>
+    <!-- Step titles and descriptions -->
+    <string name="step_type_code">Type code</string>
+    <string name="step_type_code_desc">Type a saved code snippet, human-like</string>
+    <string name="step_type_excel_row">Type Excel row</string>
+    <string name="step_type_excel_row_desc">Type the current data row into Excel cells</string>
+    <string name="step_button_recognition">Button recognition</string>
+    <string name="step_button_recognition_desc">Find a button by its text and tap it</string>
+    <string name="step_image_recognition">Image recognition</string>
+    <string name="step_image_recognition_desc">Find an image on screen and tap it</string>
+    <string name="step_color_recognition">Color recognition</string>
+    <string name="step_color_recognition_desc">Find a color on screen and tap it</string>
+    <string name="step_ocr_read">Read text (OCR)</string>
+    <string name="step_ocr_read_desc">Read screen text into a variable</string>
+    <string name="step_screenshot">Screenshot</string>
+    <string name="step_screenshot_desc">Save a screenshot of the screen</string>
+    <string name="step_paste">Paste</string>
+    <string name="step_paste_desc">Paste from the clipboard</string>
+    <string name="step_vibration">Vibration</string>
+    <string name="step_vibration_desc">Vibrate briefly</string>
+    <string name="step_sound">Sound</string>
+    <string name="step_sound_desc">Play a short beep</string>
+    <string name="step_screen_off">Screen off</string>
+    <string name="step_screen_off_desc">Lock the screen (place this step last)</string>
+    <string name="step_area_click">Area click</string>
+    <string name="step_area_click_desc">Tap a random point inside a picked area</string>
+    <string name="step_wait_random">Wait randomly</string>
+    <string name="step_wait_random_desc">Wait a random time in a range</string>
+    <string name="step_stop_task">Stop task</string>
+    <string name="step_stop_task_desc">Stop the whole run here</string>
+    <string name="step_intent_uri">Open link</string>
+    <string name="step_intent_uri_desc">Open a link or app with an intent</string>
+    <string name="step_network_get">Network request</string>
+    <string name="step_network_get_desc">Send a GET request to a URL</string>
+    <!-- Task editor: data source -->
+    <string name="editor_data">Data…</string>
+    <string name="data_dialog_title">Data source</string>
+    <string name="data_attach">Attach file…</string>
+    <string name="data_start_row">Set start row…</string>
+    <string name="data_repeat">Set repeat…</string>
+    <string name="data_remove">Remove data</string>
+    <string name="data_attached">Data file attached</string>
+    <string name="data_removed">Data source removed</string>
+    <string name="data_no_file">Attach a data file first</string>
+    <string name="data_xls_unsupported">Only .xlsx files are supported for Excel, not old .xls files</string>
+    <string name="data_read_failed">Could not read the chosen file</string>
+    <string name="data_current_none">No data source attached yet</string>
+    <string name="data_current_format">File: %1$s\nType: %2$s\nStart row: %3$d\nRepeat: %4$d (0 = all remaining rows)</string>
+    <!-- Typing mistakes picker -->
+    <string name="mistakes_title">Typing mistakes</string>
+    <string name="mistakes_off">Off</string>
+    <string name="mistakes_light">Light</string>
+    <string name="mistakes_normal">Normal</string>
+    <string name="mistakes_heavy">Heavy</string>
+    <!-- Miscellaneous editor strings -->
+    <string name="step_no_settings">This step has no settings to change</string>
+    <string name="no_snippets_yet">No snippets yet. Add one in Library first.</string>
+    <string name="choose_snippet">Choose a snippet</string>
+    <string name="wait_min_title">Minimum wait (ms)</string>
+    <string name="wait_max_title">Maximum wait (ms)</string>
+    <string name="start_row_title">Start row</string>
+    <string name="repeat_title">Repeat (0 = all remaining rows)</string>
+    <string name="intent_uri_hint">Link or URI, for example https://example.com</string>
+    <string name="network_url_hint">URL, for example https://example.com</string>
+</resources>
