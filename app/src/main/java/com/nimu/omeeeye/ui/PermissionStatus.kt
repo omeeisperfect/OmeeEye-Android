@@ -56,9 +56,12 @@ object PermissionStatus {
         val component = ComponentName(context, TriggerNotificationService::class.java)
         val full = component.flattenToString()
         val short = component.flattenToShortString()
+        // NOTE: Settings.Secure.ENABLED_NOTIFICATION_LISTENERS is a hidden
+        // constant (not in the public SDK), so the literal key is used here.
+        // It is the exact key the system stores the list under.
         val stored = Settings.Secure.getString(
             context.contentResolver,
-            Settings.Secure.ENABLED_NOTIFICATION_LISTENERS
+            "enabled_notification_listeners"
         ) ?: ""
         return stored.split(":").any { entry ->
             entry == full || entry == short ||

@@ -106,6 +106,16 @@ class OverlayPickService : Service() {
         private const val NOTIF_ID = 2
         private const val CHANNEL_ID = "omeeeye_pick"
 
+        // Recording thresholds (single companion only: Kotlin allows one
+        // companion object per class, and these are used from lambdas
+        // throughout the service).
+        const val TAP_MAX_DISTANCE_PX = 24f
+        const val TAP_MAX_DURATION_MS = 600L
+        const val MIN_SWIPE_DURATION_MS = 100L
+        const val MAX_SWIPE_DURATION_MS = 5000L
+        const val DEFAULT_WAIT_AFTER_MS = 2000L
+        const val SCREENSHOT_DELAY_MS = 350L
+
         /**
          * Starts an overlay pick. Returns false (and shows a guide
          * dialog) when the overlay permission is missing; the caller
@@ -815,12 +825,4 @@ class OverlayPickService : Service() {
         }
     }
 
-    private companion object {
-        const val TAP_MAX_DISTANCE_PX = 24f
-        const val TAP_MAX_DURATION_MS = 600L
-        const val MIN_SWIPE_DURATION_MS = 100L
-        const val MAX_SWIPE_DURATION_MS = 5000L
-        const val DEFAULT_WAIT_AFTER_MS = 2000L
-        const val SCREENSHOT_DELAY_MS = 350L
-    }
 }
