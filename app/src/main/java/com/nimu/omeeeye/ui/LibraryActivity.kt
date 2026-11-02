@@ -11,12 +11,17 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import android.provider.OpenableColumns
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.nimu.omeeeye.R
 import com.nimu.omeeeye.data.CodeLibraryStore
+import com.nimu.omeeeye.data.DataFileStore
+import com.nimu.omeeeye.data.WorkflowStore
+import com.nimu.omeeeye.model.Step
 
 /**
  * Code Library (feature 3): manages saved code snippets by name.
@@ -31,6 +36,74 @@ class LibraryActivity : AppCompatActivity() {
     private lateinit var snippetList: RecyclerView
     private lateinit var emptyText: TextView
     private lateinit var adapter: SnippetAdapter
+    private lateinit var dataFileList: RecyclerView
+    private lateinit var dataEmptyText: TextView
+    private lateinit var dataAdapter: DataFileAdapter
+
+    // Data file upload: the chosen file is copied into internal storage
+    // (never referenced by its original path, which the app may lose).
+    // Only a file pick — never a typed path — per the pick-only rule.
+    private val uploadLauncher =
+        registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            if (uri == null) return@registerForActivityResult
+            try {
+                var ext = ""
+                var displayName: String? = null
+                try {
+                    contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val nameIndex =
+                                cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                            if (nameIndex >= 0) displayName = cursor.getString(nameIndex)
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Fall through to the last-path-segment name.
+                }
+                val rawName = displayName ?: (uri.lastPathSegment ?: "")
+                ext = rawName.substringAfterLast('.', "").lowercase()
+                if (ext !in listOf("txt", "csv", "xlsx", "xls")) {
+                    ext = when (contentResolver.getType(uri)) {
+                        "text/plain" -> "txt"
+                        "text/csv", "text/comma-separated-values" -> "csv"
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" -> "xlsx"
+                        else -> ""
+                    }
+                }
+                if (ext == "xls") {
+                    Toast.makeText(this, R.string.data_xls_unsupported, Toast.LENGTH_LONG).show()
+                    return@registerForActivityResult
+                }
+                if (ext !in listOf("txt", "csv", "xlsx")) {
+                    Toast.makeText(this, R.string.data_read_failed, Toast.LENGTH_SHORT).show()
+                    return@registerForActivityResult
+                }
+                val id = DataFileStore.newId()
+                val fileName = "libdata_" + id + "." + ext
+                val outFile = java.io.File(filesDir, fileName)
+                contentResolver.openInputStream(uri)?.use { input ->
+                    outFile.outputStream().use { output -> input.copyTo(output) }
+                } ?: run {
+                    Toast.makeText(this, R.string.data_read_failed, Toast.LENGTH_SHORT).show()
+                    return@registerForActivityResult
+                }
+                val name = (displayName?.substringBeforeLast('.', displayName) ?: "")
+                    .ifBlank { "Data file" }
+                DataFileStore.save(
+                    this,
+                    DataFileStore.DataFile(
+                        id = id,
+                        name = name,
+                        type = if (ext == "xlsx") "EXCEL" else ext.uppercase(),
+                        fileName = fileName
+                    )
+                )
+                Toast.makeText(this, R.string.library_data_uploaded, Toast.LENGTH_SHORT).show()
+                reload()
+            } catch (e: Exception) {
+                Toast.makeText(this, R.string.data_read_failed, Toast.LENGTH_SHORT).show()
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,6 +121,18 @@ class LibraryActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btn_add_snippet).setOnClickListener {
             showSnippetDialog(null)
         }
+
+        dataFileList = findViewById(R.id.data_file_list)
+        dataEmptyText = findViewById(R.id.data_empty_text)
+        dataAdapter = DataFileAdapter(
+            onDelete = { file -> showDataDeleteDialog(file) }
+        )
+        dataFileList.layoutManager = LinearLayoutManager(this)
+        dataFileList.adapter = dataAdapter
+
+        findViewById<Button>(R.id.btn_upload_data).setOnClickListener {
+            uploadLauncher.launch("*/*")
+        }
     }
 
     override fun onResume() {
@@ -60,6 +145,48 @@ class LibraryActivity : AppCompatActivity() {
         adapter.submitList(snippets)
         emptyText.visibility = if (snippets.isEmpty()) View.VISIBLE else View.GONE
         snippetList.visibility = if (snippets.isEmpty()) View.GONE else View.VISIBLE
+        val dataFiles = DataFileStore.loadAll(this)
+        dataAdapter.submitList(dataFiles)
+        dataEmptyText.visibility = if (dataFiles.isEmpty()) View.VISIBLE else View.GONE
+        dataFileList.visibility = if (dataFiles.isEmpty()) View.GONE else View.VISIBLE
+    }
+
+    /** Counts steps (including nested sub-action lists) using a data file. */
+    private fun countDataFileReferences(fileId: String): Int {
+        fun scan(steps: List<Step>): Int {
+            var count = 0
+            for (step in steps) {
+                if (step.dataSourceId == fileId) count++
+                count += scan(step.customSteps)
+                count += scan(step.retrySteps)
+                count += scan(step.afterRetrySteps)
+            }
+            return count
+        }
+        return WorkflowStore.loadAll(this).sumOf { scan(it.steps) }
+    }
+
+    private fun showDataDeleteDialog(file: DataFileStore.DataFile) {
+        val inUse = countDataFileReferences(file.id)
+        val message = getString(R.string.library_data_delete_message, file.name) +
+            if (inUse > 0) {
+                "\n\n" + getString(R.string.library_data_in_use, inUse)
+            } else {
+                ""
+            }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.library_data_delete_title)
+            .setMessage(message)
+            .setPositiveButton(R.string.library_delete) { _, _ ->
+                DataFileStore.delete(this, file.id)
+                Toast.makeText(
+                    this, R.string.library_data_deleted,
+                    Toast.LENGTH_SHORT
+                ).show()
+                reload()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
     }
 
     /**
@@ -187,6 +314,49 @@ class LibraryActivity : AppCompatActivity() {
                 true
             }
             holder.deleteButton.setOnClickListener { onDelete(snippet) }
+        }
+
+        override fun getItemCount(): Int = items.size
+    }
+
+    /**
+     * Data file rows. Reuses the snippet row layout (name + preview +
+     * delete button): rows are display-only — a data file has no edit
+     * dialog — and deletion goes through [showDataDeleteDialog].
+     */
+    private class DataFileAdapter(
+        private val onDelete: (DataFileStore.DataFile) -> Unit
+    ) : RecyclerView.Adapter<DataFileAdapter.ViewHolder>() {
+
+        private var items: List<DataFileStore.DataFile> = emptyList()
+
+        fun submitList(files: List<DataFileStore.DataFile>) {
+            items = files
+            notifyDataSetChanged()
+        }
+
+        class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+            val fileName: TextView = view.findViewById(R.id.snippet_name)
+            val filePreview: TextView = view.findViewById(R.id.snippet_preview)
+            val deleteButton: ImageButton =
+                view.findViewById(R.id.btn_delete_snippet)
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
+            val view = LayoutInflater.from(parent.context)
+                .inflate(R.layout.item_snippet_row, parent, false)
+            return ViewHolder(view)
+        }
+
+        override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+            val file = items[position]
+            holder.fileName.text = file.name
+            holder.filePreview.text = "${file.type} data file"
+            holder.itemView.setOnLongClickListener {
+                onDelete(file)
+                true
+            }
+            holder.deleteButton.setOnClickListener { onDelete(file) }
         }
 
         override fun getItemCount(): Int = items.size

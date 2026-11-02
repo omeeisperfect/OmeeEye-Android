@@ -184,7 +184,19 @@ data class Step(
     // INTENT_URI target (a URI string, e.g. https://… or tel:…).
     val intentUri: String = "",
     // NETWORK_GET target URL (GET only).
-    val networkUrl: String = ""
+    val networkUrl: String = "",
+    // ---- Per-step data source (desktop _data_source_id) ----
+    // Library DataFile id (see data/DataFileStore). "" = no own source:
+    // the step falls back to the workflow's data source, exactly like the
+    // desktop default. Applies to TYPE_TEXT (placeholder resolution and
+    // empty-text column typing) and PASTE (library value instead of the
+    // clipboard). Never a file path: the id resolves via DataFileStore.
+    val dataSourceId: String = "",
+    // Column picked for this step's data source (CSV/Excel header, or
+    // "TEXT" for TXT files). "" = first data column. Only meaningful
+    // when dataSourceId is non-blank (and, for TYPE_TEXT with blank
+    // text, it is the column whose value gets typed).
+    val dataColumn: String = ""
 ) {
     /** The picked region, or null when none was picked. */
     fun region(): Rect? =

@@ -6,13 +6,31 @@
     android:orientation="vertical"
     android:padding="16dp">
 
-    <TextView
-        android:id="@+id/editor_title"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textColor="@color/text_primary"
-        android:textSize="22sp"
-        android:textStyle="bold" />
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/editor_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="@color/text_primary"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <!-- Top 3-dot menu (workflow-level actions such as Data…). -->
+        <ImageButton
+            android:id="@+id/btn_editor_menu"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/editor_data"
+            android:src="@android:drawable/ic_menu_more"
+            android:tint="@color/text_primary" />
+    </LinearLayout>
 
     <!-- Workflow NAME (a name, not a location, so typing it is fine). -->
     <EditText
@@ -60,18 +78,6 @@
             android:paddingHorizontal="4dp"
             android:textSize="14sp"
             android:text="@string/editor_add" />
-
-        <Button
-            android:id="@+id/btn_data"
-            style="@style/OutlineButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="8dp"
-            android:layout_weight="1"
-            android:minWidth="0dp"
-            android:paddingHorizontal="4dp"
-            android:textSize="14sp"
-            android:text="@string/editor_data" />
 
         <Button
             android:id="@+id/btn_save"

@@ -569,9 +569,15 @@ class OverlayPickService : Service() {
                 }
                 mainHandler.post {
                     if (shot == null) {
-                        Toast.makeText(
-                            this, R.string.rec_capture_failed, Toast.LENGTH_LONG
-                        ).show()
+                        // Surface the real screenshot reason (e.g. the
+                        // API error code) instead of only "failed".
+                        val detail = service.lastScreenshotError
+                        val text = if (detail != null) {
+                            "${getString(R.string.rec_capture_failed)}: $detail"
+                        } else {
+                            getString(R.string.rec_capture_failed)
+                        }
+                        Toast.makeText(this, text, Toast.LENGTH_LONG).show()
                         finishCancelled()
                         return@post
                     }
@@ -678,10 +684,16 @@ class OverlayPickService : Service() {
         if (returnName.isNotBlank()) {
             try {
                 val cls = Class.forName(returnName)
+                // CLEAR_TOP + SINGLE_TOP guarantee the existing editor
+                // instance is reused (onNewIntent + onResume) instead of
+                // depending on REORDER_TO_FRONT alone to find it; the
+                // editor then consumes the stored result in onResume().
                 val intent = Intent(this, cls).apply {
                     addFlags(
                         Intent.FLAG_ACTIVITY_NEW_TASK or
-                            Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                            Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP
                     )
                 }
                 startActivity(intent)

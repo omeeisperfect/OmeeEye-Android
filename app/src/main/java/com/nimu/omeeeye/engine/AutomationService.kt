@@ -253,6 +253,13 @@ class AutomationService : AccessibilityService() {
         }
     }
 
+    /** Sets the system clipboard text (used by Paste steps with a Library data source). */
+    fun setClipboardText(text: String) {
+        val clipboard =
+            getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("omeeeye", text))
+    }
+
     /** Pastes the clipboard into the focused input. False when nothing is focused. */
     fun pasteClipboard(): Boolean {
         val node = findFocusInput() ?: return false
@@ -347,9 +354,23 @@ class AutomationService : AccessibilityService() {
     // Screenshots (API 30+; null on older Android — callers fail cleanly)
     // ------------------------------------------------------------------
 
+    /**
+     * Diagnostic detail for the most recent takeScreenshotBitmap() call
+     * that returned null (null when the last call succeeded). Read by
+     * the runner and the overlay capture path so a screenshot failure
+     * is reported with its real reason instead of a generic message.
+     * Never used to fake a success: a null bitmap is still a failure.
+     */
+    var lastScreenshotError: String? = null
+        private set
+
     /** Takes a screenshot of the active display, or null when unavailable. */
     fun takeScreenshotBitmap(): Bitmap? {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+        lastScreenshotError = null
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            lastScreenshotError = "Requires Android 10 or newer"
+            return null
+        }
         var resultBitmap: Bitmap? = null
         val latch = CountDownLatch(1)
         try {
@@ -369,22 +390,32 @@ class AutomationService : AccessibilityService() {
                             hardware?.close()
                         } catch (e: Exception) {
                             resultBitmap = null
+                            lastScreenshotError = "Screenshot could not be read"
                         }
                         latch.countDown()
                     }
 
                     override fun onFailure(errorCode: Int) {
+                        lastScreenshotError = "Screenshot API error code $errorCode"
                         latch.countDown()
                     }
                 }
             )
         } catch (e: Exception) {
+            lastScreenshotError = "Screenshot rejected: ${e.message}"
             return null
         }
-        try {
+        val finished = try {
             latch.await(3000, TimeUnit.MILLISECONDS)
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
+            false
+        }
+        if (!finished && resultBitmap == null && lastScreenshotError == null) {
+            lastScreenshotError = "Screenshot timed out"
+        }
+        if (resultBitmap == null && lastScreenshotError == null) {
+            lastScreenshotError = "Screenshot could not be read"
         }
         return resultBitmap
     }

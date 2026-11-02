@@ -8,6 +8,7 @@ import android.os.Looper
 import android.os.SystemClock
 import com.nimu.omeeeye.R
 import com.nimu.omeeeye.data.CodeLibraryStore
+import com.nimu.omeeeye.data.DataFileStore
 import com.nimu.omeeeye.data.DataSourceLoader
 import com.nimu.omeeeye.data.RunHistoryStore
 import com.nimu.omeeeye.data.WorkflowStore
@@ -115,6 +116,11 @@ object WorkflowRunner {
     private val runVariables = mutableMapOf<String, String>()
     private var currentDataRowValues: List<String> = emptyList()
     private var currentDataRowColumns: List<String> = emptyList()
+    // 0-based position in the current run's iteration sequence (workflow
+    // data rows, or plain cycles). Per-step Library data sources read
+    // the row at this ordinal (modulo the file's row count); single-step
+    // tests never advance it, so they always read the first row.
+    private var currentIterationOrdinal: Int = 0
     private val stepLogs = mutableListOf<RunHistoryStore.StepLog>()
 
     fun init(context: Context) {
@@ -204,6 +210,7 @@ object WorkflowRunner {
         runVariables.clear()
         currentDataRowValues = emptyList()
         currentDataRowColumns = emptyList()
+        currentIterationOrdinal = 0
         stepLogs.clear()
         Thread({ tickerLoop() }, "omeeeye-ticker").start()
         return true
@@ -278,6 +285,7 @@ object WorkflowRunner {
                     break
                 }
             }
+            currentIterationOrdinal = iterationIndex
             applyDataRow(row)
             var index = 0
             while (index < workflow.steps.size) {
@@ -412,6 +420,74 @@ object WorkflowRunner {
     }
 
     // ------------------------------------------------------------------
+    // Per-step data sources (desktop _data_source_id)
+    // ------------------------------------------------------------------
+
+    private sealed class StepData {
+        /** Step has no own source: fall back to the workflow's source. */
+        object NotAttached : StepData()
+        /** One row of the step's own Library file. */
+        class Row(val values: Map<String, String>) : StepData()
+        /** The step's own source cannot be used; [message] is user-facing. */
+        class Error(val message: String) : StepData()
+    }
+
+    /**
+     * Resolves a step's own Library data source (precedence: the step's
+     * own source first, else the workflow's source — the caller handles
+     * the fallback by using [NotAttached]). The row is the current
+     * iteration ordinal modulo the file's row count, so a step file
+     * shorter than the workflow's iteration count cycles instead of
+     * failing; a single-step test always reads the first row.
+     */
+    private fun resolveStepData(step: Step): StepData {
+        if (step.dataSourceId.isBlank()) return StepData.NotAttached
+        val ctx = appContext ?: return StepData.Error("Data file not found")
+        val file = DataFileStore.get(ctx, step.dataSourceId)
+            ?: return StepData.Error(
+                stringOr(R.string.run_data_missing, "Data file not found")
+            )
+        val loaded = DataSourceLoader.loadFile(ctx, file.type, file.fileName)
+        if (loaded.error != null) return StepData.Error(loaded.error)
+        if (loaded.rows.isEmpty()) {
+            return StepData.Error(
+                stringOr(R.string.run_data_empty, "Data file is empty")
+            )
+        }
+        val row = loaded.rows[currentIterationOrdinal % loaded.rows.size]
+        return StepData.Row(row)
+    }
+
+    /**
+     * The value of [column] in [row], or the first data column when
+     * [column] is blank. Returns null when the named column does not
+     * exist (the caller then fails the step cleanly). "ROW" is never a
+     * data column.
+     */
+    private fun stepColumnValue(
+        row: Map<String, String>,
+        column: String
+    ): String? {
+        if (column.isNotBlank()) return row[column]
+        return row.entries.firstOrNull { it.key != "ROW" }?.value
+    }
+
+    /**
+     * Like [substitute], but a step's own row wins: placeholders resolve
+     * from [stepRow] first, then the workflow's data row, then run
+     * (OCR) variables. Steps without an own source keep using
+     * [substitute] unchanged.
+     */
+    private fun substituteWithRow(text: String, stepRow: Map<String, String>): String {
+        var out = text
+        for ((key, value) in stepRow) {
+            out = out.replace("%$key%", value)
+            out = out.replace("%${key.uppercase()}%", value)
+        }
+        return substitute(out)
+    }
+
+    // ------------------------------------------------------------------
     // Step execution (shared by full runs, single steps, sub-tasks)
     // ------------------------------------------------------------------
 
@@ -442,7 +518,35 @@ object WorkflowRunner {
                 else StepResult.Failed(failMessage(index, "Swipe failed"))
             }
             StepType.TYPE_TEXT -> {
-                val text = substitute(step.text)
+                // Per-step data source (desktop _data_source_id): the
+                // step's own Library file wins over the workflow's file.
+                // Blank text + own source types the picked column's
+                // value; otherwise placeholders resolve from the own
+                // row first, then the workflow row. No own source =
+                // exactly the old behaviour below.
+                val stepData = resolveStepData(step)
+                if (stepData is StepData.Error) {
+                    return StepResult.Failed(failMessage(index, stepData.message))
+                }
+                val text = when (stepData) {
+                    is StepData.Row -> {
+                        if (step.text.isBlank()) {
+                            stepColumnValue(stepData.values, step.dataColumn)
+                                ?: return StepResult.Failed(
+                                    failMessage(
+                                        index,
+                                        stringOr(
+                                            R.string.run_data_column_missing,
+                                            "Column not found in data file"
+                                        )
+                                    )
+                                )
+                        } else {
+                            substituteWithRow(step.text, stepData.values)
+                        }
+                    }
+                    else -> substitute(step.text)
+                }
                 val ok = if (step.mistakeLevel != MistakeLevel.OFF) {
                     service.typeHuman(text, step.mistakeLevel)
                 } else {
@@ -512,15 +616,42 @@ object WorkflowRunner {
                 val path = service.takeScreenshotSave()
                 if (path != null) StepResult.Success
                 else StepResult.Failed(
-                    failMessage(
-                        index,
-                        stringOr(R.string.run_screenshot_failed, "Screenshot failed")
-                    )
+                    screenshotFailMessage(index, service)
                 )
             }
             StepType.PASTE -> {
-                if (service.pasteClipboard()) StepResult.Success
-                else StepResult.Failed(failMessage(index, "Paste failed"))
+                // No own source = the old clipboard-only behaviour.
+                // With a Library source, the row's value is placed on
+                // the clipboard first and then pasted with the exact
+                // same mechanism as before.
+                if (step.dataSourceId.isBlank()) {
+                    if (service.pasteClipboard()) StepResult.Success
+                    else StepResult.Failed(failMessage(index, "Paste failed"))
+                } else {
+                    val stepData = resolveStepData(step)
+                    if (stepData is StepData.Error) {
+                        StepResult.Failed(failMessage(index, stepData.message))
+                    } else if (stepData is StepData.Row) {
+                        val value = stepColumnValue(stepData.values, step.dataColumn)
+                        if (value == null) {
+                            StepResult.Failed(
+                                failMessage(
+                                    index,
+                                    stringOr(
+                                        R.string.run_data_column_missing,
+                                        "Column not found in data file"
+                                    )
+                                )
+                            )
+                        } else {
+                            service.setClipboardText(value)
+                            if (service.pasteClipboard()) StepResult.Success
+                            else StepResult.Failed(failMessage(index, "Paste failed"))
+                        }
+                    } else {
+                        StepResult.Failed(failMessage(index, "Paste failed"))
+                    }
+                }
             }
             StepType.VIBRATION -> {
                 service.vibrate(300)
@@ -700,10 +831,7 @@ object WorkflowRunner {
                     val shot = service.takeScreenshotBitmap()
                     if (shot == null) {
                         DetectOutcome.HardFail(
-                            failMessage(
-                                index,
-                                stringOr(R.string.run_screenshot_failed, "Screenshot failed")
-                            )
+                            screenshotFailMessage(index, service)
                         )
                     } else {
                         val point = service.findImageInBitmap(shot, templateBitmap!!, region)
@@ -716,10 +844,7 @@ object WorkflowRunner {
                     val shot = service.takeScreenshotBitmap()
                     if (shot == null) {
                         DetectOutcome.HardFail(
-                            failMessage(
-                                index,
-                                stringOr(R.string.run_screenshot_failed, "Screenshot failed")
-                            )
+                            screenshotFailMessage(index, service)
                         )
                     } else {
                         val point = service.findColorInBitmap(
@@ -734,10 +859,7 @@ object WorkflowRunner {
                     val shot = service.takeScreenshotBitmap()
                     if (shot == null) {
                         DetectOutcome.HardFail(
-                            failMessage(
-                                index,
-                                stringOr(R.string.run_screenshot_failed, "Screenshot failed")
-                            )
+                            screenshotFailMessage(index, service)
                         )
                     } else {
                         val result = OcrEngine.read(shot, region?.let {
@@ -1049,6 +1171,18 @@ object WorkflowRunner {
 
     private fun jumpLoopMessage(): String =
         stringOr(R.string.run_jump_loop, "Jump loop detected")
+
+    /**
+     * Screenshot failure message with the real API reason when known
+     * (e.g. "Screenshot failed: Screenshot API error code 2"). A null
+     * bitmap is still a failure — the detail only makes it diagnosable.
+     */
+    private fun screenshotFailMessage(index: Int, service: AutomationService?): String {
+        val base = stringOr(R.string.run_screenshot_failed, "Screenshot failed")
+        val detail = service?.lastScreenshotError
+        val reason = if (detail != null) "$base: $detail" else base
+        return failMessage(index, reason)
+    }
 
     private fun stringOr(resId: Int, fallback: String): String =
         try {

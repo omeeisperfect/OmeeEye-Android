@@ -158,14 +158,46 @@ class RecognitionEditActivity : AppCompatActivity() {
     // "success", "retry" or "after".
     private var pendingSubList: String? = null
     private var overlayRequestId: String? = null
+    // A pick the user asked for but the overlay permission blocked:
+    // the request is kept (not dropped) so that returning from system
+    // settings with the permission granted resumes it automatically
+    // instead of stranding the user on a dead pick button.
+    private var pickAwaitingPermission: Boolean = false
 
     override fun onResume() {
         super.onResume()
+        // Resume a permission-blocked pick the moment the grant exists.
+        // This must run before the early returns below: on the blocked
+        // path no result was ever stored, so take() would return null
+        // and the resume would be skipped.
+        if (pickAwaitingPermission &&
+            android.provider.Settings.canDrawOverlays(this)
+        ) {
+            pickAwaitingPermission = false
+            val kind = pendingRegionKind
+            val subList = pendingSubList
+            if (kind != null) {
+                launchPickRegion(kind)
+            } else if (subList != null) {
+                launchSubPointPick(subList)
+            }
+        }
         val requestId = overlayRequestId ?: return
         val json = OverlayPickStore.take(requestId) ?: return
         // A result arrived: the pick is over, whatever it says.
         overlayRequestId = null
         applyOverlayResult(json)
+    }
+
+    override fun onSaveInstanceState(outState: android.os.Bundle) {
+        super.onSaveInstanceState(outState)
+        // The overlay moves this task to the back; if Android recreates
+        // the editor while a pick is in flight, the pending request must
+        // survive, or the stored result would never be consumed.
+        outState.putString("overlayRequestId", overlayRequestId)
+        outState.putString("pendingRegionKind", pendingRegionKind)
+        outState.putString("pendingSubList", pendingSubList)
+        outState.putBoolean("pickAwaitingPermission", pickAwaitingPermission)
     }
 
     /** Applies one overlay result (region or point pick). */
@@ -240,6 +272,17 @@ class RecognitionEditActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_recognition_edit)
+
+        // Restore an in-flight overlay pick after recreation (see
+        // onSaveInstanceState): without this, a recreated editor would
+        // never consume the stored pick result.
+        if (savedInstanceState != null) {
+            overlayRequestId = savedInstanceState.getString("overlayRequestId")
+            pendingRegionKind = savedInstanceState.getString("pendingRegionKind")
+            pendingSubList = savedInstanceState.getString("pendingSubList")
+            pickAwaitingPermission =
+                savedInstanceState.getBoolean("pickAwaitingPermission", false)
+        }
 
         loadInputs()
         bindViews()
@@ -521,10 +564,11 @@ class RecognitionEditActivity : AppCompatActivity() {
             AreaMode.FULLSCREEN -> getString(R.string.rec_area_fullscreen)
             AreaMode.REGION -> getString(R.string.rec_area_region)
         }
-        // The on-screen pick button only appears once Picked region is
-        // chosen; in Fullscreen mode there is nothing to pick.
-        btnPickRegion.visibility =
-            if (areaMode == AreaMode.REGION) View.VISIBLE else View.GONE
+        // The on-screen pick button is always visible: tapping it while
+        // the area is Fullscreen switches to Region first (see
+        // launchPickRegion). Hiding it left new Button steps with no
+        // pick control at all, which read as "no screen access".
+        btnPickRegion.visibility = View.VISIBLE
     }
 
     /** Region state is shown, never as editable data: picked / not picked. */
@@ -655,6 +699,14 @@ class RecognitionEditActivity : AppCompatActivity() {
 
     private fun launchPickRegion(kind: String) {
         pendingRegionKind = kind
+        // Button area picks: tapping "Pick" is itself the user choosing
+        // a region, so a Fullscreen area becomes Region first. Without
+        // this, a new Button step showed no pick button at all (the
+        // button is only meaningful once a region is being picked).
+        if (kind == "area" && areaMode != AreaMode.REGION) {
+            areaMode = AreaMode.REGION
+            refreshAreaViews()
+        }
         val regionMode =
             if (kind == "template") "template" else if (kind == "color") "color" else "region"
         val requestId = WorkflowStore.newId()
@@ -663,8 +715,28 @@ class RecognitionEditActivity : AppCompatActivity() {
                 this, requestId, regionMode, RecognitionEditActivity::class.java.name
             )
         ) {
-            overlayRequestId = null
-            pendingRegionKind = null
+            // Permission gate: KEEP the request so onResume() can resume
+            // it automatically once the user grants the permission.
+            // Clearing it here stranded the user on a dead pick button.
+            pickAwaitingPermission = true
+        } else {
+            pickAwaitingPermission = false
+        }
+    }
+
+    /** Sub-action Tap pick (shared by the auto-resume in onResume). */
+    private fun launchSubPointPick(listKey: String) {
+        pendingSubList = listKey
+        val requestId = WorkflowStore.newId()
+        overlayRequestId = requestId
+        if (!OverlayPickService.startPoint(
+                this, requestId, getString(R.string.pick_hint),
+                RecognitionEditActivity::class.java.name
+            )
+        ) {
+            pickAwaitingPermission = true
+        } else {
+            pickAwaitingPermission = false
         }
     }
 
@@ -805,19 +877,7 @@ class RecognitionEditActivity : AppCompatActivity() {
             .setTitle(R.string.rec_add_action_title)
             .setItems(labels) { _, which ->
                 when (which) {
-                    0 -> {
-                        pendingSubList = listKey
-                        val requestId = WorkflowStore.newId()
-                        overlayRequestId = requestId
-                        if (!OverlayPickService.startPoint(
-                                this, requestId, getString(R.string.pick_hint),
-                                RecognitionEditActivity::class.java.name
-                            )
-                        ) {
-                            overlayRequestId = null
-                            pendingSubList = null
-                        }
-                    }
+                    0 -> launchSubPointPick(listKey)
                     1 -> showTypeTextSubDialog(listKey)
                     else -> showWaitSubDialog(listKey)
                 }

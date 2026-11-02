@@ -4,9 +4,15 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.text.InputType
+import android.view.View
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageButton
 import android.widget.NumberPicker
+import android.widget.PopupMenu
+import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
@@ -18,6 +24,8 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.nimu.omeeeye.R
 import com.nimu.omeeeye.data.CodeLibraryStore
+import com.nimu.omeeeye.data.DataFileStore
+import com.nimu.omeeeye.data.DataSourceLoader
 import com.nimu.omeeeye.data.WorkflowStore
 import com.nimu.omeeeye.engine.WorkflowRunner
 import com.nimu.omeeeye.model.MistakeLevel
@@ -64,7 +72,8 @@ class TaskEditorActivity : AppCompatActivity() {
     private lateinit var workflowId: String
     private val steps: MutableList<Step> = mutableListOf()
 
-    // Data-driven repeat state (workflow-level, edited via the Data button).
+    // Data-driven repeat state (workflow-level, edited via the editor's
+    // overflow menu — the Data button no longer sits in the bottom row).
     private var dataType: String = ""
     private var dataFileName: String = ""
     private var startRow: Int = 1
@@ -364,8 +373,10 @@ class TaskEditorActivity : AppCompatActivity() {
 
         findViewById<Button>(R.id.btn_add).setOnClickListener { openAddStepSheet() }
         findViewById<Button>(R.id.btn_cancel).setOnClickListener { finish() }
-        findViewById<Button>(R.id.btn_data).setOnClickListener { showDataDialog() }
         findViewById<Button>(R.id.btn_save).setOnClickListener { saveAndFinish() }
+        findViewById<ImageButton>(R.id.btn_editor_menu).setOnClickListener {
+            showEditorMenu(it)
+        }
 
         // Back press = cancel: finish without saving. Uses the base
         // OnBackPressedCallback API (no activity-ktx dependency).
@@ -461,8 +472,8 @@ class TaskEditorActivity : AppCompatActivity() {
             StepType.IMAGE_RECOGNITION,
             StepType.COLOR_RECOGNITION,
             StepType.OCR_READ -> launchRecognition(null, type, -1)
+            StepType.PASTE -> showPasteDialog(null, null)
             StepType.SCREENSHOT,
-            StepType.PASTE,
             StepType.VIBRATION,
             StepType.SOUND,
             StepType.SCREEN_OFF,
@@ -508,8 +519,8 @@ class TaskEditorActivity : AppCompatActivity() {
             StepType.WAIT_RANDOM -> showWaitRandomDialog(step, position)
             StepType.INTENT_URI -> showUriDialog(step, position, false)
             StepType.NETWORK_GET -> showUriDialog(step, position, true)
+            StepType.PASTE -> showPasteDialog(step, position)
             StepType.SCREENSHOT,
-            StepType.PASTE,
             StepType.VIBRATION,
             StepType.SOUND,
             StepType.SCREEN_OFF,
@@ -718,6 +729,125 @@ class TaskEditorActivity : AppCompatActivity() {
             .show()
     }
 
+    /** Top 3-dot menu: workflow-level actions (currently just Data…). */
+    private fun showEditorMenu(anchor: View) {
+        val popup = PopupMenu(this, anchor)
+        popup.menu.add(getString(R.string.editor_data))
+        popup.setOnMenuItemClickListener {
+            showDataDialog()
+            true
+        }
+        popup.show()
+    }
+
+    /**
+     * State for a "Library data file + column" picker pair, shared by
+     * the Type text and Paste dialogs. Position 0 of the file spinner
+     * is always "None"; real files follow in [files] order.
+     */
+    private class DataPickerState(
+        val fileSpinner: Spinner,
+        val columnSpinner: Spinner,
+        val files: List<DataFileStore.DataFile>
+    ) {
+        fun selectedFileId(): String {
+            val pos = fileSpinner.selectedItemPosition
+            return if (pos > 0) files[pos - 1].id else ""
+        }
+
+        fun selectedFile(): DataFileStore.DataFile? {
+            val pos = fileSpinner.selectedItemPosition
+            return if (pos > 0) files[pos - 1] else null
+        }
+
+        fun selectedColumn(): String {
+            if (selectedFileId().isBlank()) return ""
+            return columnSpinner.selectedItem as? String ?: ""
+        }
+    }
+
+    /**
+     * Appends a "Data source" section (file spinner + column spinner +
+     * optional hint + deleted-file warning) to a dialog [layout].
+     * [existingId]/[existingColumn] pre-select the step's current
+     * source; when the id no longer exists in the Library, the warning
+     * shows and the spinners fall back to None (saving then clears the
+     * stale reference, visibly — never silently).
+     */
+    private fun addDataSourceSection(
+        layout: android.widget.LinearLayout,
+        existingId: String,
+        existingColumn: String,
+        hintRes: Int?
+    ): DataPickerState {
+        val files = DataFileStore.loadAll(this)
+        val title = android.widget.TextView(this).apply {
+            text = getString(R.string.type_data_source_title)
+        }
+        layout.addView(title)
+        val fileSpinner = Spinner(this)
+        val fileLabels = mutableListOf(getString(R.string.type_data_none))
+        fileLabels.addAll(files.map { it.name })
+        fileSpinner.adapter = ArrayAdapter(
+            this, android.R.layout.simple_spinner_item, fileLabels
+        ).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        layout.addView(fileSpinner)
+        val columnSpinner = Spinner(this)
+        layout.addView(columnSpinner)
+        val warning = android.widget.TextView(this).apply {
+            text = getString(R.string.type_data_missing_warning)
+            visibility = View.GONE
+        }
+        layout.addView(warning)
+        if (hintRes != null) {
+            layout.addView(
+                android.widget.TextView(this).apply {
+                    text = getString(hintRes)
+                }
+            )
+        }
+        val existingIndex = files.indexOfFirst { it.id == existingId }
+        if (existingId.isNotBlank() && existingIndex < 0) {
+            warning.visibility = View.VISIBLE
+        }
+        fun refreshColumns() {
+            val file = DataPickerState(fileSpinner, columnSpinner, files).selectedFile()
+            val columns = if (file == null) {
+                emptyList()
+            } else {
+                DataSourceLoader.columns(this, file.type, file.fileName)
+            }
+            columnSpinner.adapter = ArrayAdapter(
+                this, android.R.layout.simple_spinner_item,
+                if (columns.isEmpty()) listOf("") else columns
+            ).apply {
+                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            }
+            if (file != null && file.id == existingId && existingColumn in columns) {
+                columnSpinner.setSelection(columns.indexOf(existingColumn))
+            }
+        }
+        fileSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: AdapterView<*>?,
+                view: View?,
+                position: Int,
+                id: Long
+            ) {
+                refreshColumns()
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+        if (existingIndex >= 0) {
+            fileSpinner.setSelection(existingIndex + 1)
+        }
+        refreshColumns()
+        return DataPickerState(fileSpinner, columnSpinner, files)
+    }
+
     /** Workflow-level data source: attach file, start row, repeat, remove. */
     private fun showDataDialog() {
         val message = if (dataFileName.isBlank()) {
@@ -873,6 +1003,15 @@ class TaskEditorActivity : AppCompatActivity() {
             )
         }
         layout.addView(mistakesGroup)
+        // Per-step data source (desktop _data_source_id): None means
+        // "use the workflow's data file", exactly like the desktop
+        // default; otherwise this step reads its own Library file.
+        val dataPickers = addDataSourceSection(
+            layout,
+            existing?.dataSourceId ?: "",
+            existing?.dataColumn ?: "",
+            R.string.type_data_hint
+        )
         AlertDialog.Builder(this)
             .setTitle(R.string.step_type_text)
             .setView(layout)
@@ -886,11 +1025,14 @@ class TaskEditorActivity : AppCompatActivity() {
                 } else {
                     MistakeLevel.OFF
                 }
+                val dataSourceId = dataPickers.selectedFileId()
+                val dataColumn = dataPickers.selectedColumn()
                 if (existing != null && position != null) {
                     replaceStep(
                         position,
                         existing.copy(
-                            text = text, waitAfterMs = waitAfterMs, mistakeLevel = level
+                            text = text, waitAfterMs = waitAfterMs, mistakeLevel = level,
+                            dataSourceId = dataSourceId, dataColumn = dataColumn
                         )
                     )
                 } else {
@@ -900,7 +1042,96 @@ class TaskEditorActivity : AppCompatActivity() {
                             type = StepType.TYPE_TEXT,
                             text = text,
                             waitAfterMs = waitAfterMs,
-                            mistakeLevel = level
+                            mistakeLevel = level,
+                            dataSourceId = dataSourceId,
+                            dataColumn = dataColumn
+                        )
+                    )
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /**
+     * PASTE options — this dialog did not exist before: adding a Paste
+     * step showed no settings at all, and editing one only showed a
+     * "no settings" toast. Source Clipboard preserves the old
+     * behaviour exactly (old steps keep a blank dataSourceId); Library
+     * data pastes the chosen file's value at the current row.
+     */
+    private fun showPasteDialog(existing: Step?, position: Int?) {
+        val density = resources.displayMetrics.density
+        val pad = (16 * density).toInt()
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, pad)
+        }
+        val sourceGroup = android.widget.RadioGroup(this).apply {
+            orientation = android.widget.RadioGroup.VERTICAL
+        }
+        val clipboardButton = android.widget.RadioButton(this).apply {
+            text = getString(R.string.paste_source_clipboard)
+            isChecked = (existing?.dataSourceId ?: "").isBlank()
+            tag = "clipboard"
+        }
+        val libraryButton = android.widget.RadioButton(this).apply {
+            text = getString(R.string.paste_source_library)
+            isChecked = (existing?.dataSourceId ?: "").isNotBlank()
+            tag = "library"
+        }
+        sourceGroup.addView(clipboardButton)
+        sourceGroup.addView(libraryButton)
+        layout.addView(sourceGroup)
+        val dataPickers = addDataSourceSection(
+            layout,
+            existing?.dataSourceId ?: "",
+            existing?.dataColumn ?: "",
+            R.string.paste_data_hint
+        )
+        fun refreshEnabled() {
+            val library = libraryButton.isChecked
+            dataPickers.fileSpinner.isEnabled = library
+            dataPickers.columnSpinner.isEnabled = library
+        }
+        sourceGroup.setOnCheckedChangeListener { _, _ -> refreshEnabled() }
+        refreshEnabled()
+        val waitLabel = android.widget.TextView(this).apply {
+            text = getString(R.string.type_wait_after_title)
+        }
+        layout.addView(waitLabel)
+        val waitPicker = NumberPicker(this).apply {
+            minValue = 0
+            maxValue = WAIT_PICKER_MAX
+            value = ((existing?.waitAfterMs ?: DEFAULT_WAIT_AFTER_MS) / 100).toInt()
+                .coerceIn(0, WAIT_PICKER_MAX)
+        }
+        layout.addView(waitPicker)
+        AlertDialog.Builder(this)
+            .setTitle(R.string.paste_dialog_title)
+            .setView(layout)
+            .setPositiveButton(R.string.ok) { _, _ ->
+                val waitAfterMs = waitPicker.value * 100L
+                val useLibrary = libraryButton.isChecked
+                val dataSourceId = if (useLibrary) dataPickers.selectedFileId() else ""
+                val dataColumn = if (useLibrary) dataPickers.selectedColumn() else ""
+                if (existing != null && position != null) {
+                    replaceStep(
+                        position,
+                        existing.copy(
+                            waitAfterMs = waitAfterMs,
+                            dataSourceId = dataSourceId,
+                            dataColumn = dataColumn
+                        )
+                    )
+                } else {
+                    addStep(
+                        Step(
+                            id = WorkflowStore.newId(),
+                            type = StepType.PASTE,
+                            waitAfterMs = waitAfterMs,
+                            dataSourceId = dataSourceId,
+                            dataColumn = dataColumn
                         )
                     )
                 }

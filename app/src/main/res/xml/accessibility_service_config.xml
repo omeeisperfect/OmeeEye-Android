@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- canTakeScreenshot is REQUIRED for AccessibilityService.takeScreenshot():
+     without it the framework refuses every screenshot request, so the
+     Screenshot step, Image/Color/OCR run detection, and template/color
+     capture all failed with a generic "Screenshot failed". -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeAllMask"
     android:accessibilityFeedbackType="feedbackGeneric"
@@ -6,5 +10,6 @@
     android:canPerformGestures="true"
     android:canRequestFilterKeyEvents="true"
     android:canRetrieveWindowContent="true"
+    android:canTakeScreenshot="true"
     android:description="@string/accessibility_description"
     android:notificationTimeout="100" />

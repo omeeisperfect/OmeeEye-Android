@@ -184,6 +184,8 @@ object WorkflowStore {
         put("waitMaxMs", s.waitMaxMs)
         put("intentUri", s.intentUri)
         put("networkUrl", s.networkUrl)
+        put("dataSourceId", s.dataSourceId)
+        put("dataColumn", s.dataColumn)
     }
 
     private fun stepsFromArray(arr: JSONArray?): List<Step> {
@@ -260,7 +262,9 @@ object WorkflowStore {
             waitMinMs = obj.optLong("waitMinMs", 0),
             waitMaxMs = obj.optLong("waitMaxMs", 1000),
             intentUri = obj.optString("intentUri", ""),
-            networkUrl = obj.optString("networkUrl", "")
+            networkUrl = obj.optString("networkUrl", ""),
+            dataSourceId = obj.optString("dataSourceId", ""),
+            dataColumn = obj.optString("dataColumn", "")
         )
     }
 }

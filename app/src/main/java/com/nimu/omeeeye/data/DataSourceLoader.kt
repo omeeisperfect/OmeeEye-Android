@@ -28,9 +28,16 @@ object DataSourceLoader {
 
     data class Result(val rows: List<Map<String, String>>, val error: String?)
 
-    fun load(context: Context, workflow: Workflow): Result {
-        val fileName = workflow.dataFileName
-        if (workflow.dataType.isBlank() || fileName.isBlank()) {
+    fun load(context: Context, workflow: Workflow): Result =
+        loadFile(context, workflow.dataType, workflow.dataFileName)
+
+    /**
+     * Loads one data file by type + internal-storage file name. Used by
+     * the workflow-level source (via [load]) and by per-step Library
+     * data sources alike, so both paths parse identically.
+     */
+    fun loadFile(context: Context, type: String, fileName: String): Result {
+        if (type.isBlank() || fileName.isBlank()) {
             return Result(emptyList(), "No data source attached")
         }
         val file = File(context.filesDir, fileName)
@@ -38,7 +45,7 @@ object DataSourceLoader {
             return Result(emptyList(), "Data file not found")
         }
         return try {
-            when (workflow.dataType.uppercase()) {
+            when (type.uppercase()) {
                 "TXT" -> Result(loadTxt(file), null)
                 "CSV" -> Result(loadCsv(file), null)
                 "EXCEL" -> loadXlsx(file)
@@ -47,6 +54,18 @@ object DataSourceLoader {
         } catch (e: Exception) {
             Result(emptyList(), "Could not read data file: ${e.message}")
         }
+    }
+
+    /**
+     * Column names of a data file, in file order, without the synthetic
+     * "ROW" key. TXT files report the single column "TEXT". Returns an
+     * empty list when the file cannot be read (pickers then show no
+     * columns instead of crashing).
+     */
+    fun columns(context: Context, type: String, fileName: String): List<String> {
+        val loaded = loadFile(context, type, fileName)
+        if (loaded.error != null || loaded.rows.isEmpty()) return emptyList()
+        return loaded.rows[0].keys.filter { it != "ROW" }
     }
 
     private fun loadTxt(file: File): List<Map<String, String>> {

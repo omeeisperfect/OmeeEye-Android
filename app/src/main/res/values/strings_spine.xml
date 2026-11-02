@@ -64,6 +64,18 @@
     <string name="data_read_failed">Could not read the chosen file</string>
     <string name="data_current_none">No data source attached yet</string>
     <string name="data_current_format">File: %1$s\nType: %2$s\nStart row: %3$d\nRepeat: %4$d (0 = all remaining rows)</string>
+    <!-- Per-step data sources (desktop _data_source_id) and Paste options -->
+    <string name="run_data_missing">Data file not found</string>
+    <string name="run_data_empty">Data file is empty</string>
+    <string name="run_data_column_missing">Column not found in data file</string>
+    <string name="paste_dialog_title">Paste options</string>
+    <string name="paste_data_hint">The value from the chosen file at the current row is placed on the clipboard and then pasted.</string>
+    <string name="paste_source_clipboard">Clipboard</string>
+    <string name="paste_source_library">Library data file</string>
+    <string name="type_data_source_title">Data source</string>
+    <string name="type_data_none">None (use workflow data)</string>
+    <string name="type_data_hint">When a data file is chosen, %COLUMN% in the text is filled from that file at the current row. Empty text types the chosen column.</string>
+    <string name="type_data_missing_warning">The previously selected data file was deleted.</string>
     <!-- Typing mistakes picker -->
     <string name="mistakes_title">Typing mistakes</string>
     <string name="mistakes_off">Off</string>

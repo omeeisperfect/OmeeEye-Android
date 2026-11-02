@@ -154,7 +154,7 @@
 
     <!-- Overlay pick/record (picks happen over other apps) -->
     <string name="overlay_pick_title">Pick on screen</string>
-    <string name="overlay_pick_permission">To pick a point on another app, allow OmeeEye to display over other apps, then try again.</string>
+    <string name="overlay_pick_permission">Picking on another app needs OmeeEye to display over other apps. Tap Open settings to allow it, then return here and the pick will start automatically.</string>
     <string name="overlay_pick_open_settings">Open settings</string>
     <string name="overlay_pick_confirm">Confirm</string>
     <string name="overlay_record_hint">Tap or swipe on the screen to record. Tap Stop when finished.</string>
@@ -169,4 +169,13 @@
     <string name="library_title">Code Library</string>
     <string name="library_desc">Save code snippets here and reuse them with a future Type code step. Snippets will be typed slowly, like a person typing.</string>
     <string name="library_empty">No snippets yet.</string>
+    <!-- Library data files (per-step data sources) -->
+    <string name="library_data_title">Data files</string>
+    <string name="library_data_upload">Upload data file…</string>
+    <string name="library_data_empty">No data files yet.</string>
+    <string name="library_data_uploaded">Data file uploaded</string>
+    <string name="library_data_deleted">Data file deleted</string>
+    <string name="library_data_delete_title">Delete data file</string>
+    <string name="library_data_delete_message">Delete %1$s?</string>
+    <string name="library_data_in_use">Warning: %1$d step(s) still use this file. Those steps will fail with a clear message until you pick another source.</string>
 </resources>
