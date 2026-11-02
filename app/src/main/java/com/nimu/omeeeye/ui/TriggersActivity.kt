@@ -85,7 +85,7 @@ class TriggersActivity : AppCompatActivity() {
 
         triggerList = findViewById(R.id.trigger_list)
         emptyText = findViewById(R.id.trigger_empty_text)
-        adapter = TriggerAdapter(object : TriggerAdapter.Listener {
+        adapter = TriggerAdapter(object : Listener {
             override fun onToggle(trigger: TriggerStore.TriggerConfig, enabled: Boolean) {
                 TriggerStore.save(this@TriggersActivity, trigger.copy(enabled = enabled))
                 TriggerEngine.startIfNeeded(this@TriggersActivity)
@@ -526,16 +526,19 @@ class TriggersActivity : AppCompatActivity() {
     // Row adapter (kept inside this file: no other feature owns it)
     // ------------------------------------------------------------------
 
+    // Row-action callbacks. Declared at activity level (not inside the
+    // inner adapter class): Kotlin does not allow an interface inside
+    // an inner class ("Interface is not allowed here" compile error).
+    interface Listener {
+        fun onToggle(trigger: TriggerStore.TriggerConfig, enabled: Boolean)
+        fun onTest(trigger: TriggerStore.TriggerConfig)
+        fun onDelete(trigger: TriggerStore.TriggerConfig)
+        fun onEdit(trigger: TriggerStore.TriggerConfig)
+    }
+
     private inner class TriggerAdapter(
         private val listener: Listener
     ) : RecyclerView.Adapter<TriggerAdapter.ViewHolder>() {
-
-        interface Listener {
-            fun onToggle(trigger: TriggerStore.TriggerConfig, enabled: Boolean)
-            fun onTest(trigger: TriggerStore.TriggerConfig)
-            fun onDelete(trigger: TriggerStore.TriggerConfig)
-            fun onEdit(trigger: TriggerStore.TriggerConfig)
-        }
 
         private var items: List<TriggerStore.TriggerConfig> = emptyList()
         private var names: Map<String, String> = emptyMap()

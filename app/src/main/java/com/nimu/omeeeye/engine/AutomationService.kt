@@ -356,8 +356,8 @@ class AutomationService : AccessibilityService() {
             takeScreenshot(
                 android.view.Display.DEFAULT_DISPLAY,
                 mainExecutor,
-                object : ScreenshotCallback() {
-                    override fun onSuccess(screenshot: ScreenshotResult) {
+                object : AccessibilityService.TakeScreenshotCallback {
+                    override fun onSuccess(screenshot: AccessibilityService.ScreenshotResult) {
                         try {
                             val hardware = screenshot.hardwareBuffer
                             val wrapped = Bitmap.wrapHardwareBuffer(
