@@ -163,6 +163,24 @@ class MainActivity : AppCompatActivity() {
         }
 
         btnClose.setOnClickListener { finish() }
+
+        // Base-v2 bottom navigation: open the section screens.
+        // Home is this screen, so its tab does nothing.
+        // Nothing else on this screen changed: the top 3-dot menu,
+        // search, cards, CREATE TASK, and CLOSE all work as before.
+        findViewById<View>(R.id.nav_home).setOnClickListener { /* Already home. */ }
+        findViewById<View>(R.id.nav_triggers).setOnClickListener {
+            startActivity(Intent(this, TriggersActivity::class.java))
+        }
+        findViewById<View>(R.id.nav_hide).setOnClickListener {
+            startActivity(Intent(this, HideActivity::class.java))
+        }
+        findViewById<View>(R.id.nav_library).setOnClickListener {
+            startActivity(Intent(this, LibraryActivity::class.java))
+        }
+        findViewById<View>(R.id.nav_settings).setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
     }
 
     override fun onResume() {

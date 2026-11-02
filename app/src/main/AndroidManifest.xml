@@ -32,6 +32,11 @@
         <activity android:name=".ui.HistoryActivity" />
         <activity android:name=".ui.TrashActivity" />
 
+        <!-- Base-v2 section screens (placeholder content, see each activity). -->
+        <activity android:name=".ui.TriggersActivity" />
+        <activity android:name=".ui.HideActivity" />
+        <activity android:name=".ui.LibraryActivity" />
+
         <!-- Transparent overlay: tap anywhere to pick a point. Returns x/y, never typed. -->
         <activity
             android:name=".ui.PickPointActivity"
