@@ -65,7 +65,7 @@
             android:layout_height="40dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="Duplicate step"
-            android:src="@android:drawable/ic_menu_copy" />
+            android:src="@drawable/ic_copy" />
 
         <ImageButton
             android:id="@+id/btn_drag"
