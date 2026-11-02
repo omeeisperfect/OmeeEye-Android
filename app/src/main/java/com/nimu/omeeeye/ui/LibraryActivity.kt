@@ -87,7 +87,10 @@ class LibraryActivity : AppCompatActivity() {
                     Toast.makeText(this, R.string.data_read_failed, Toast.LENGTH_SHORT).show()
                     return@registerForActivityResult
                 }
-                val name = (displayName?.substringBeforeLast('.', displayName) ?: "")
+                // Snapshot first: displayName is a var captured by the
+                // cursor closure above, so it cannot be smart-cast here.
+                val display = displayName
+                val name = (display?.substringBeforeLast('.', display) ?: "")
                     .ifBlank { "Data file" }
                 DataFileStore.save(
                     this,
