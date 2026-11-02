@@ -21,6 +21,16 @@
     <!-- Triggers: exact time alarms (falls back to inexact when denied) -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
+    <!-- Package visibility (Android 11+): without this, queryIntentActivities
+         only returns system apps, so Launch App never lists user apps.
+         This is NOT QUERY_ALL_PACKAGES — only launcher apps are visible. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <application
         android:name=".ui.OmeeEyeApplication"
         android:allowBackup="true"
@@ -54,21 +64,13 @@
             android:name=".ui.RecognitionEditActivity"
             android:exported="false" />
 
-        <!-- Translucent on-screen region/template/color picker. -->
-        <activity
-            android:name=".ui.PickRegionActivity"
-            android:theme="@style/TranslucentTheme"
-            android:exported="false" />
-
-        <!-- Transparent overlay: tap anywhere to pick a point. Returns x/y, never typed. -->
-        <activity
-            android:name=".ui.PickPointActivity"
-            android:theme="@style/TranslucentTheme" />
-
-        <!-- Transparent overlay: records the user's taps/swipes into steps. -->
-        <activity
-            android:name=".ui.RecordActivity"
-            android:theme="@style/TranslucentTheme" />
+        <!-- Overlay pick/record service: picks and records OVER other
+             apps via a system overlay window (the old translucent pick
+             activities could only ever show this app's own screen). -->
+        <service
+            android:name=".ui.OverlayPickService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse" />
 
         <service
             android:name=".engine.AutomationService"

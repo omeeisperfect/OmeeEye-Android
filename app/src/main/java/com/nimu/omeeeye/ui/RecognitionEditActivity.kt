@@ -15,7 +15,6 @@ import android.widget.RadioGroup
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.nimu.omeeeye.R
@@ -23,6 +22,7 @@ import com.nimu.omeeeye.data.WorkflowStore
 import com.nimu.omeeeye.model.AfterRetryMode
 import com.nimu.omeeeye.model.AreaMode
 import com.nimu.omeeeye.model.MatchMode
+import com.nimu.omeeeye.model.MistakeLevel
 import com.nimu.omeeeye.model.Point
 import com.nimu.omeeeye.model.Step
 import com.nimu.omeeeye.model.StepType
@@ -48,16 +48,17 @@ import java.io.File
  * edited step), or RESULT_CANCELED (Close / back press, nothing saved).
  *
  * Standing rules honoured here, with no exceptions:
- * - Locations are ONLY picked on screen (PickRegionActivity drags,
- *   PickPointActivity taps). Button text / ID / description and the OCR
- *   variable name are TEXT, not locations, so typing those is allowed.
+ * - Locations are ONLY picked on screen, via the OverlayPickService
+ *   overlay over other apps (region drags, point taps). Button text /
+ *   ID / description and the OCR variable name are TEXT, not locations,
+ *   so typing those is allowed.
  * - Jump targets are ALWAYS picked from the workflow's existing steps
  *   (never a typed id, never the step being edited itself). When the
  *   workflow has no other step, the jump pickers show a hint instead of
  *   an empty list, and Save is disabled while a Jump mode is selected.
  * - No fake functionality: a step that needs a template / color area /
  *   button identification cannot be saved without it, and a failed
- *   template/color capture saves nothing (PickRegionActivity cancels).
+ *   template/color capture saves nothing (the overlay pick cancels).
  *
  * Self-contained: it does NOT depend on TaskEditorActivity internals.
  * Sub-action steps get fresh ids via WorkflowStore.newId() and a
@@ -148,75 +149,91 @@ class RecognitionEditActivity : AppCompatActivity() {
     private lateinit var textAfterJumpStatus: TextView
     private lateinit var btnSave: Button
 
-    // ---- Pick launchers ----
-    // Which on-screen pick is in flight for PickRegionActivity:
+    // ---- Overlay pick state ----
+    // Which on-screen pick is in flight for the overlay:
     // "area" (the section-1 region), "search" (image search region),
     // "ocr" (OCR region), "template", "color".
     private var pendingRegionKind: String? = null
-    // Which sub-action list a PickPointActivity tap belongs to:
+    // Which sub-action list an overlay tap belongs to:
     // "success", "retry" or "after".
     private var pendingSubList: String? = null
+    private var overlayRequestId: String? = null
 
-    private val pickRegionLauncher =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            val kind = pendingRegionKind
+    override fun onResume() {
+        super.onResume()
+        val requestId = overlayRequestId ?: return
+        val json = OverlayPickStore.take(requestId) ?: return
+        // A result arrived: the pick is over, whatever it says.
+        overlayRequestId = null
+        applyOverlayResult(json)
+    }
+
+    /** Applies one overlay result (region or point pick). */
+    private fun applyOverlayResult(json: String) {
+        val obj = try {
+            JSONObject(json)
+        } catch (e: Exception) {
+            return
+        }
+        if (obj.optString("kind") == OverlayPickStore.CANCELLED_KIND) {
             pendingRegionKind = null
-            if (result.resultCode != RESULT_OK || kind == null) return@registerForActivityResult
-            val data = result.data ?: return@registerForActivityResult
-            val left = data.getIntExtra("left", -1)
-            val top = data.getIntExtra("top", -1)
-            val right = data.getIntExtra("right", -1)
-            val bottom = data.getIntExtra("bottom", -1)
-            when (kind) {
-                "template" -> {
-                    val path = data.getStringExtra("templatePath") ?: ""
-                    if (path.isNotBlank()) {
-                        templatePath = path
-                        refreshTemplateViews()
-                    }
-                }
-                "color" -> {
-                    if (left >= 0 && top >= 0 && right > left && bottom > top) {
-                        setRegion(left, top, right, bottom)
-                        colorValue = data.getIntExtra("colorValue", 0)
-                        colorPicked = true
-                        refreshColorViews()
-                        refreshRegionStatuses()
-                    }
-                }
-                else -> {
-                    // "area", "search", "ocr": a picked region, searched
-                    // in REGION mode from now on.
-                    if (left >= 0 && top >= 0 && right > left && bottom > top) {
-                        setRegion(left, top, right, bottom)
-                        areaMode = AreaMode.REGION
-                        refreshAreaViews()
-                        refreshRegionStatuses()
-                    }
-                }
-            }
-            refreshSaveEnabled()
-        }
-
-    private val pickPointLauncher =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            val listKey = pendingSubList
             pendingSubList = null
-            if (result.resultCode != RESULT_OK || listKey == null) {
-                return@registerForActivityResult
-            }
-            val point = Point(
-                result.data?.getIntExtra("x", 0) ?: 0,
-                result.data?.getIntExtra("y", 0) ?: 0
-            )
-            val step = Step(
-                id = WorkflowStore.newId(),
-                type = StepType.TAP,
-                point = point,
-                waitAfterMs = WAIT_AFTER_MS
-            )
-            addSubAction(listKey, step)
+            return
         }
+        when (obj.optString("kind")) {
+            "region" -> {
+                val kind = pendingRegionKind
+                pendingRegionKind = null
+                if (kind == null) return
+                val left = obj.optInt("left", -1)
+                val top = obj.optInt("top", -1)
+                val right = obj.optInt("right", -1)
+                val bottom = obj.optInt("bottom", -1)
+                when (kind) {
+                    "template" -> {
+                        val path = obj.optString("templatePath", "")
+                        if (path.isNotBlank()) {
+                            templatePath = path
+                            refreshTemplateViews()
+                        }
+                    }
+                    "color" -> {
+                        if (left >= 0 && top >= 0 && right > left && bottom > top) {
+                            setRegion(left, top, right, bottom)
+                            colorValue = obj.optInt("colorValue", 0)
+                            colorPicked = true
+                            refreshColorViews()
+                            refreshRegionStatuses()
+                        }
+                    }
+                    else -> {
+                        // "area", "search", "ocr": a picked region, searched
+                        // in REGION mode from now on.
+                        if (left >= 0 && top >= 0 && right > left && bottom > top) {
+                            setRegion(left, top, right, bottom)
+                            areaMode = AreaMode.REGION
+                            refreshAreaViews()
+                            refreshRegionStatuses()
+                        }
+                    }
+                }
+                refreshSaveEnabled()
+            }
+            "point" -> {
+                val listKey = pendingSubList
+                pendingSubList = null
+                if (listKey == null) return
+                val point = Point(obj.optInt("x"), obj.optInt("y"))
+                val step = Step(
+                    id = WorkflowStore.newId(),
+                    type = StepType.TAP,
+                    point = point,
+                    waitAfterMs = WAIT_AFTER_MS
+                )
+                addSubAction(listKey, step)
+            }
+        }
+    }
 
     // ---------- Lifecycle ----------
 
@@ -638,9 +655,17 @@ class RecognitionEditActivity : AppCompatActivity() {
 
     private fun launchPickRegion(kind: String) {
         pendingRegionKind = kind
-        val intent = Intent(this, PickRegionActivity::class.java)
-        intent.putExtra("mode", if (kind == "template") "template" else if (kind == "color") "color" else "region")
-        pickRegionLauncher.launch(intent)
+        val regionMode =
+            if (kind == "template") "template" else if (kind == "color") "color" else "region"
+        val requestId = WorkflowStore.newId()
+        overlayRequestId = requestId
+        if (!OverlayPickService.startRegion(
+                this, requestId, regionMode, RecognitionEditActivity::class.java.name
+            )
+        ) {
+            overlayRequestId = null
+            pendingRegionKind = null
+        }
     }
 
     // ---------- Dialogs ----------
@@ -782,9 +807,16 @@ class RecognitionEditActivity : AppCompatActivity() {
                 when (which) {
                     0 -> {
                         pendingSubList = listKey
-                        pickPointLauncher.launch(
-                            Intent(this, PickPointActivity::class.java)
-                        )
+                        val requestId = WorkflowStore.newId()
+                        overlayRequestId = requestId
+                        if (!OverlayPickService.startPoint(
+                                this, requestId, getString(R.string.pick_hint),
+                                RecognitionEditActivity::class.java.name
+                            )
+                        ) {
+                            overlayRequestId = null
+                            pendingSubList = null
+                        }
                     }
                     1 -> showTypeTextSubDialog(listKey)
                     else -> showWaitSubDialog(listKey)
@@ -794,24 +826,72 @@ class RecognitionEditActivity : AppCompatActivity() {
             .show()
     }
 
-    /** Type text content is text, not a location, so an EditText is fine. */
+    /** Type text content is text, not a location, so an EditText is fine.
+     * Also exposes wait-after and typing-mistakes (the runner already
+     * applies mistakeLevel for TYPE_TEXT); defaults keep old behaviour:
+     * wait 2000 ms, mistakes Off. */
     private fun showTypeTextSubDialog(listKey: String) {
-        val input = EditText(this).apply {
-            inputType = InputType.TYPE_CLASS_TEXT
-            val pad = (16 * resources.displayMetrics.density).toInt()
+        val density = resources.displayMetrics.density
+        val pad = (16 * density).toInt()
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
             setPadding(pad, pad, pad, pad)
         }
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT
+        }
+        layout.addView(input)
+        val waitLabel = TextView(this).apply {
+            text = getString(R.string.type_wait_after_title)
+        }
+        layout.addView(waitLabel)
+        val waitPicker = NumberPicker(this).apply {
+            minValue = 0
+            maxValue = MAX_PICKER_100MS
+            value = (WAIT_AFTER_MS / 100).toInt().coerceIn(0, MAX_PICKER_100MS)
+        }
+        layout.addView(waitPicker)
+        val mistakesLabel = TextView(this).apply {
+            text = getString(R.string.type_mistakes_title)
+        }
+        layout.addView(mistakesLabel)
+        val mistakesGroup = RadioGroup(this).apply {
+            orientation = RadioGroup.VERTICAL
+        }
+        listOf(
+            getString(R.string.mistakes_off) to MistakeLevel.OFF,
+            getString(R.string.mistakes_light) to MistakeLevel.LIGHT,
+            getString(R.string.mistakes_normal) to MistakeLevel.NORMAL,
+            getString(R.string.mistakes_heavy) to MistakeLevel.HEAVY
+        ).forEach { (label, level) ->
+            mistakesGroup.addView(
+                android.widget.RadioButton(this).apply {
+                    text = label
+                    isChecked = level == MistakeLevel.OFF
+                    tag = level
+                }
+            )
+        }
+        layout.addView(mistakesGroup)
         AlertDialog.Builder(this)
             .setTitle(R.string.rec_type_text_title)
-            .setView(input)
+            .setView(layout)
             .setPositiveButton(R.string.ok) { _, _ ->
+                val checkedId = mistakesGroup.checkedRadioButtonId
+                val level = if (checkedId >= 0) {
+                    (mistakesGroup.findViewById<android.widget.RadioButton>(checkedId)?.tag
+                        as? MistakeLevel) ?: MistakeLevel.OFF
+                } else {
+                    MistakeLevel.OFF
+                }
                 addSubAction(
                     listKey,
                     Step(
                         id = WorkflowStore.newId(),
                         type = StepType.TYPE_TEXT,
                         text = input.text.toString(),
-                        waitAfterMs = WAIT_AFTER_MS
+                        waitAfterMs = waitPicker.value * 100L,
+                        mistakeLevel = level
                     )
                 )
             }

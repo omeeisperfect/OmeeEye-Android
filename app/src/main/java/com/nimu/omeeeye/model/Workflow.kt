@@ -2,12 +2,12 @@ package com.nimu.omeeeye.model
 
 /**
  * A screen point picked ON SCREEN. Points are never typed by the user:
- * they only ever come from PickPointActivity (tap) or RecordActivity
- * (recorded touches). See the standing pick-only rule in README.md.
+ * they only ever come from the OverlayPickService overlay (tap or
+ * recorded touches). See the standing pick-only rule in README.md.
  */
 data class Point(val x: Int, val y: Int)
 
-/** A rectangular screen area, picked ON SCREEN via PickRegionActivity. */
+/** A rectangular screen area, picked ON SCREEN via the overlay. */
 data class Rect(val left: Int, val top: Int, val right: Int, val bottom: Int) {
     fun contains(x: Int, y: Int): Boolean =
         x in left..right && y in top..bottom

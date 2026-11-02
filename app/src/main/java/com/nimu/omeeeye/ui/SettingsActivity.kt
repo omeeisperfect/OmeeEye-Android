@@ -19,12 +19,6 @@ import com.nimu.omeeeye.R
  */
 class SettingsActivity : AppCompatActivity() {
 
-    companion object {
-        // Component flatten form: package + "/.engine.AutomationService".
-        private const val AUTOMATION_SERVICE_COMPONENT =
-            "com.nimu.omeeeye/.engine.AutomationService"
-    }
-
     private lateinit var accessibilityStatus: TextView
     private lateinit var overlayStatus: TextView
     private lateinit var batteryStatus: TextView
@@ -84,13 +78,11 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun refreshStatuses() {
         // (a) Accessibility: is this app's AutomationService enabled?
-        val enabledServices = Settings.Secure.getString(
-            contentResolver,
-            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-        ) ?: ""
-        val accessibilityOn = enabledServices
-            .split(":")
-            .any { it == AUTOMATION_SERVICE_COMPONENT }
+        // Fixed detection (see PermissionStatus): the old code compared
+        // the enabled-services string against only the SHORT flattened
+        // form, so on devices/ROMs that store the FULL form it always
+        // reported OFF even with the service turned on.
+        val accessibilityOn = PermissionStatus.isAccessibilityEnabled(this)
         accessibilityStatus.text = if (accessibilityOn) {
             getString(R.string.accessibility_on)
         } else {

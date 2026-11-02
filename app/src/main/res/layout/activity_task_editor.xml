@@ -44,6 +44,9 @@
             android:layout_height="wrap_content"
             android:layout_marginEnd="8dp"
             android:layout_weight="1"
+            android:minWidth="0dp"
+            android:paddingHorizontal="4dp"
+            android:textSize="14sp"
             android:text="@string/editor_cancel" />
 
         <Button
@@ -53,6 +56,9 @@
             android:layout_height="wrap_content"
             android:layout_marginEnd="8dp"
             android:layout_weight="1"
+            android:minWidth="0dp"
+            android:paddingHorizontal="4dp"
+            android:textSize="14sp"
             android:text="@string/editor_add" />
 
         <Button
@@ -62,6 +68,9 @@
             android:layout_height="wrap_content"
             android:layout_marginEnd="8dp"
             android:layout_weight="1"
+            android:minWidth="0dp"
+            android:paddingHorizontal="4dp"
+            android:textSize="14sp"
             android:text="@string/editor_data" />
 
         <Button
@@ -70,6 +79,9 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
+            android:minWidth="0dp"
+            android:paddingHorizontal="4dp"
+            android:textSize="14sp"
             android:text="@string/editor_save" />
     </LinearLayout>
 </LinearLayout>

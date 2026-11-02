@@ -152,6 +152,19 @@
     <string name="unhide_time_desc">Unhide automatically at a set time</string>
     <string name="hide_stop_note">Emergency stop: locking the phone (power button) always stops a running workflow.</string>
 
+    <!-- Overlay pick/record (picks happen over other apps) -->
+    <string name="overlay_pick_title">Pick on screen</string>
+    <string name="overlay_pick_permission">To pick a point on another app, allow OmeeEye to display over other apps, then try again.</string>
+    <string name="overlay_pick_open_settings">Open settings</string>
+    <string name="overlay_pick_confirm">Confirm</string>
+    <string name="overlay_record_hint">Tap or swipe on the screen to record. Tap Stop when finished.</string>
+    <string name="overlay_record_count">Steps: %1$d</string>
+    <string name="overlay_record_stop">Stop</string>
+    <string name="overlay_swipe_confirm_hint">Tap Confirm to use these points, or tap again to move the end point</string>
+    <string name="type_wait_after_title">Wait after this step</string>
+    <string name="no_apps_found">No apps found</string>
+    <string name="type_mistakes_title">Typing mistakes</string>
+
     <!-- Code Library section -->
     <string name="library_title">Code Library</string>
     <string name="library_desc">Save code snippets here and reuse them with a future Type code step. Snippets will be typed slowly, like a person typing.</string>

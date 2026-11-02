@@ -21,6 +21,7 @@ import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.nimu.omeeeye.R
@@ -159,6 +160,10 @@ class TriggersActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         reload()
+        // Permission states are re-read here (not only in onCreate) so
+        // returning from a system grant screen updates the buttons
+        // without reopening this screen.
+        refreshPermissionStates()
     }
 
     override fun onRequestPermissionsResult(
@@ -175,6 +180,49 @@ class TriggersActivity : AppCompatActivity() {
                 if (granted) R.string.trigger_sms_granted else R.string.trigger_sms_denied,
                 Toast.LENGTH_LONG
             ).show()
+            refreshPermissionStates()
+        }
+    }
+
+    /**
+     * Real visual state for each permission button, re-read from live
+     * system state on every call (never hardcoded). Granted: green
+     * checkmark prefix + accent (green) text. Not granted: the plain
+     * action label in the default text colour. Colours come from the
+     * @color/... names, which have Light and AMOLED night overrides,
+     * so no hardcoded hex can break either theme.
+     */
+    private fun refreshPermissionStates() {
+        stylePermissionButton(
+            findViewById(R.id.btn_perm_accessibility),
+            PermissionStatus.isAccessibilityEnabled(this),
+            R.string.trigger_perm_accessibility_btn
+        )
+        stylePermissionButton(
+            findViewById(R.id.btn_perm_notification),
+            PermissionStatus.isNotificationListenerEnabled(this),
+            R.string.trigger_perm_notification_btn
+        )
+        stylePermissionButton(
+            findViewById(R.id.btn_perm_sms),
+            PermissionStatus.isSmsGranted(this),
+            R.string.trigger_perm_sms_btn
+        )
+        stylePermissionButton(
+            findViewById(R.id.btn_perm_battery),
+            PermissionStatus.isBatteryUnrestricted(this),
+            R.string.trigger_perm_battery_btn
+        )
+    }
+
+    private fun stylePermissionButton(button: Button, granted: Boolean, labelRes: Int) {
+        val label = getString(labelRes)
+        if (granted) {
+            button.text = "✓ $label"
+            button.setTextColor(ContextCompat.getColor(this, R.color.accent))
+        } else {
+            button.text = label
+            button.setTextColor(ContextCompat.getColor(this, R.color.text_primary))
         }
     }
 

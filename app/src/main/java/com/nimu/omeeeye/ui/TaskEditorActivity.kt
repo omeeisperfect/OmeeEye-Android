@@ -37,9 +37,10 @@ import org.json.JSONObject
  * WorkflowStore.save, toasts, and finishes.
  *
  * Locations are NEVER typed here: there is no X/Y input anywhere in this
- * activity. Points come only from PickPointActivity results (Tap, Swipe)
- * or RecordActivity results (Record gesture). The workflow name and the
- * Type-text content are text, not locations, so typing those is fine.
+ * activity. Points come only from the OverlayPickService overlay (Tap,
+ * Swipe, Record gesture), which picks over other apps. The workflow name
+ * and the Type-text content are text, not locations, so typing those is
+ * fine.
  *
  * NOTE: The WorkflowRunner.Listener signatures below were verified against
  * the runner's actual source (engine/WorkflowRunner.kt): onStepChanged
@@ -84,27 +85,41 @@ class TaskEditorActivity : AppCompatActivity() {
         return name.ifBlank { null }
     }
 
-    // ---- Pick-point state machine (Tap re-picks one point, Swipe two) ----
+    // ---- Overlay pick state (Tap one point, Swipe start+end together) ----
+    // The overlay service picks over other apps and stores its result in
+    // OverlayPickStore; this activity consumes it in onResume(). pickKind
+    // remembers which step the pick belongs to while the task is in back.
     private enum class PickKind { TAP_NEW, TAP_EDIT, SWIPE_NEW, SWIPE_EDIT }
     private var pickKind: PickKind? = null
     private var pickEditIndex: Int = -1
-    private var pickSwipeStart: Point? = null
+    private var overlayRequestId: String? = null
 
-    private val pickPointLauncher =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            val kind = pickKind
-            pickKind = null
-            if (result.resultCode != RESULT_OK || kind == null) {
-                pickSwipeStart = null
-                return@registerForActivityResult
+    override fun onResume() {
+        super.onResume()
+        val requestId = overlayRequestId ?: return
+        val json = OverlayPickStore.take(requestId) ?: return
+        // A result arrived: the pick is over, whatever it says.
+        overlayRequestId = null
+        applyOverlayResult(json)
+    }
+
+    /** Applies one overlay result (point / swipe / region / record). */
+    private fun applyOverlayResult(json: String) {
+        val obj = try {
+            JSONObject(json)
+        } catch (e: Exception) {
+            return
+        }
+        when (obj.optString("kind")) {
+            OverlayPickStore.CANCELLED_KIND -> {
+                // User aborted from the overlay: nothing changes.
+                pickKind = null
+                return
             }
-            val point = Point(
-                result.data?.getIntExtra("x", 0) ?: 0,
-                result.data?.getIntExtra("y", 0) ?: 0
-            )
-            when (kind) {
-                PickKind.TAP_NEW -> {
-                    addStep(
+            "point" -> {
+                val point = Point(obj.optInt("x"), obj.optInt("y"))
+                when (pickKind) {
+                    PickKind.TAP_NEW -> addStep(
                         Step(
                             id = WorkflowStore.newId(),
                             type = StepType.TAP,
@@ -112,44 +127,90 @@ class TaskEditorActivity : AppCompatActivity() {
                             waitAfterMs = DEFAULT_WAIT_AFTER_MS
                         )
                     )
+                    PickKind.TAP_EDIT -> {
+                        val old = steps.getOrNull(pickEditIndex)
+                        if (old != null) replaceStep(pickEditIndex, old.copy(point = point))
+                    }
+                    else -> { /* A point cannot complete a swipe. */ }
                 }
-                PickKind.TAP_EDIT -> {
-                    val old = steps.getOrNull(pickEditIndex)
-                    if (old != null) replaceStep(pickEditIndex, old.copy(point = point))
-                }
-                PickKind.SWIPE_NEW, PickKind.SWIPE_EDIT -> {
-                    val start = pickSwipeStart
-                    if (start == null) {
-                        // First pick was the start; pick the end next.
-                        pickSwipeStart = point
-                        pickKind = kind
-                        launchPick(getString(R.string.pick_end_hint))
-                    } else {
-                        pickSwipeStart = null
-                        if (kind == PickKind.SWIPE_NEW) {
-                            addStep(
-                                Step(
-                                    id = WorkflowStore.newId(),
-                                    type = StepType.SWIPE,
-                                    start = start,
-                                    end = point,
-                                    durationMs = DEFAULT_SWIPE_DURATION_MS,
-                                    waitAfterMs = DEFAULT_WAIT_AFTER_MS
-                                )
-                            )
-                        } else {
-                            val old = steps.getOrNull(pickEditIndex)
-                            if (old != null) {
-                                replaceStep(
-                                    pickEditIndex,
-                                    old.copy(start = start, end = point)
-                                )
-                            }
+            }
+            "swipe" -> {
+                val start = Point(obj.optInt("startX"), obj.optInt("startY"))
+                val end = Point(obj.optInt("endX"), obj.optInt("endY"))
+                when (pickKind) {
+                    PickKind.SWIPE_NEW -> addStep(
+                        Step(
+                            id = WorkflowStore.newId(),
+                            type = StepType.SWIPE,
+                            start = start,
+                            end = end,
+                            durationMs = DEFAULT_SWIPE_DURATION_MS,
+                            waitAfterMs = DEFAULT_WAIT_AFTER_MS
+                        )
+                    )
+                    PickKind.SWIPE_EDIT -> {
+                        val old = steps.getOrNull(pickEditIndex)
+                        if (old != null) {
+                            replaceStep(pickEditIndex, old.copy(start = start, end = end))
                         }
                     }
+                    else -> { /* A swipe cannot complete a tap. */ }
+                }
+            }
+            "region" -> {
+                val left = obj.optInt("left", -1)
+                val top = obj.optInt("top", -1)
+                val right = obj.optInt("right", -1)
+                val bottom = obj.optInt("bottom", -1)
+                if (left < 0 || top < 0 || right <= left || bottom <= top) return
+                val editIndex = areaClickEditIndex
+                areaClickEditIndex = -1
+                if (editIndex in steps.indices) {
+                    val old = steps[editIndex]
+                    replaceStep(
+                        editIndex,
+                        old.copy(
+                            regionLeft = left, regionTop = top,
+                            regionRight = right, regionBottom = bottom
+                        )
+                    )
+                } else {
+                    addStep(
+                        Step(
+                            id = WorkflowStore.newId(),
+                            type = StepType.AREA_CLICK,
+                            regionLeft = left, regionTop = top,
+                            regionRight = right, regionBottom = bottom,
+                            waitAfterMs = DEFAULT_WAIT_AFTER_MS
+                        )
+                    )
+                }
+            }
+            "record" -> {
+                val stepsJson = obj.optString("steps_json")
+                if (stepsJson.isBlank()) return
+                try {
+                    val arr = JSONArray(stepsJson)
+                    val added = mutableListOf<Step>()
+                    for (i in 0 until arr.length()) {
+                        added.add(WorkflowStore.stepFromJson(arr.getJSONObject(i)))
+                    }
+                    if (added.isNotEmpty()) {
+                        val position = steps.size
+                        steps.addAll(added)
+                        adapter.notifyItemRangeInserted(position, added.size)
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(
+                        this,
+                        "Recorded steps could not be loaded",
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
             }
         }
+        pickKind = null
+    }
 
     // Recognition editor result: add the returned step, or replace the
     // step being edited (recogEditIndex >= 0).
@@ -168,40 +229,6 @@ class TaskEditorActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) {
                 Toast.makeText(this, "Recognition step could not be loaded", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-    // Area-click region result: the region is picked on screen only.
-    private val regionLauncher =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            val editIndex = areaClickEditIndex
-            areaClickEditIndex = -1
-            if (result.resultCode != RESULT_OK) return@registerForActivityResult
-            val data = result.data ?: return@registerForActivityResult
-            val left = data.getIntExtra("left", -1)
-            val top = data.getIntExtra("top", -1)
-            val right = data.getIntExtra("right", -1)
-            val bottom = data.getIntExtra("bottom", -1)
-            if (left < 0 || top < 0 || right <= left || bottom <= top) return@registerForActivityResult
-            if (editIndex in steps.indices) {
-                val old = steps[editIndex]
-                replaceStep(
-                    editIndex,
-                    old.copy(
-                        regionLeft = left, regionTop = top,
-                        regionRight = right, regionBottom = bottom
-                    )
-                )
-            } else {
-                addStep(
-                    Step(
-                        id = WorkflowStore.newId(),
-                        type = StepType.AREA_CLICK,
-                        regionLeft = left, regionTop = top,
-                        regionRight = right, regionBottom = bottom,
-                        waitAfterMs = DEFAULT_WAIT_AFTER_MS
-                    )
-                )
             }
         }
 
@@ -242,30 +269,6 @@ class TaskEditorActivity : AppCompatActivity() {
                 Toast.makeText(this, R.string.data_attached, Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Toast.makeText(this, R.string.data_read_failed, Toast.LENGTH_SHORT).show()
-            }
-        }
-
-    private val recordLauncher =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            if (result.resultCode != RESULT_OK) return@registerForActivityResult
-            val json = result.data?.getStringExtra("steps_json") ?: return@registerForActivityResult
-            try {
-                val arr = JSONArray(json)
-                val added = mutableListOf<Step>()
-                for (i in 0 until arr.length()) {
-                    added.add(WorkflowStore.stepFromJson(arr.getJSONObject(i)))
-                }
-                if (added.isNotEmpty()) {
-                    val position = steps.size
-                    steps.addAll(added)
-                    adapter.notifyItemRangeInserted(position, added.size)
-                }
-            } catch (e: Exception) {
-                Toast.makeText(
-                    this,
-                    "Recorded steps could not be loaded",
-                    Toast.LENGTH_SHORT
-                ).show()
             }
         }
 
@@ -445,8 +448,7 @@ class TaskEditorActivity : AppCompatActivity() {
             }
             StepType.SWIPE -> {
                 pickKind = PickKind.SWIPE_NEW
-                pickSwipeStart = null
-                launchPick(getString(R.string.pick_start_hint))
+                launchSwipePick()
             }
             StepType.TYPE_TEXT -> showTypeTextDialog(null, null)
             StepType.WAIT -> showWaitDurationDialog(null, null)
@@ -489,8 +491,7 @@ class TaskEditorActivity : AppCompatActivity() {
             StepType.SWIPE -> {
                 pickKind = PickKind.SWIPE_EDIT
                 pickEditIndex = position
-                pickSwipeStart = null
-                launchPick(getString(R.string.pick_start_hint))
+                launchSwipePick()
             }
             StepType.TYPE_TEXT -> showTypeTextDialog(step, position)
             StepType.WAIT -> showWaitDurationDialog(step, position)
@@ -611,12 +612,18 @@ class TaskEditorActivity : AppCompatActivity() {
         recogLauncher.launch(intent)
     }
 
-    /** AREA_CLICK: pick the area on screen (never typed coordinates). */
+    /** AREA_CLICK: pick the area on screen via the overlay (never typed). */
     private fun launchAreaPick(position: Int) {
         areaClickEditIndex = position
-        val intent = Intent(this, PickRegionActivity::class.java)
-        intent.putExtra("mode", "region")
-        regionLauncher.launch(intent)
+        val requestId = WorkflowStore.newId()
+        overlayRequestId = requestId
+        if (!OverlayPickService.startRegion(
+                this, requestId, "region", TaskEditorActivity::class.java.name
+            )
+        ) {
+            overlayRequestId = null
+            areaClickEditIndex = -1
+        }
     }
 
     /** WAIT_RANDOM: min/max in 100 ms steps. */
@@ -774,42 +781,126 @@ class TaskEditorActivity : AppCompatActivity() {
             .show()
     }
 
-    // ---------- Pick / record launches ----------
+    // ---------- Pick / record launches (overlay over other apps) ----------
+    // Each launch starts the overlay service and moves this task to the
+    // back, so the user picks on the real screen underneath. The result
+    // is consumed in onResume(). When the overlay permission is missing,
+    // the service helper shows the guide dialog and returns false, and
+    // no pick is left pending.
 
     private fun launchPick(hint: String) {
-        val intent = Intent(this, PickPointActivity::class.java)
-        intent.putExtra("hint", hint)
-        pickPointLauncher.launch(intent)
+        val requestId = WorkflowStore.newId()
+        overlayRequestId = requestId
+        if (!OverlayPickService.startPoint(
+                this, requestId, hint, TaskEditorActivity::class.java.name
+            )
+        ) {
+            overlayRequestId = null
+        }
+    }
+
+    private fun launchSwipePick() {
+        val requestId = WorkflowStore.newId()
+        overlayRequestId = requestId
+        if (!OverlayPickService.startSwipe(
+                this, requestId, TaskEditorActivity::class.java.name
+            )
+        ) {
+            overlayRequestId = null
+        }
     }
 
     private fun launchRecord() {
-        recordLauncher.launch(Intent(this, RecordActivity::class.java))
+        val requestId = WorkflowStore.newId()
+        overlayRequestId = requestId
+        if (!OverlayPickService.startRecord(
+                this, requestId, TaskEditorActivity::class.java.name
+            )
+        ) {
+            overlayRequestId = null
+        }
     }
 
     // ---------- Step editors (shared by create and edit) ----------
 
-    /** TYPE_TEXT: text content is the step's purpose, not a location. */
+    /** TYPE_TEXT: text + wait-after + typing-mistakes level.
+     * The runner already applies mistakeLevel (human-like typing with
+     * correction when it is not OFF, plain typing when OFF), and the
+     * step JSON already persists it — this dialog only exposes it.
+     * Defaults keep old behaviour exactly: wait 2000 ms, mistakes Off. */
     private fun showTypeTextDialog(existing: Step?, position: Int?) {
+        val density = resources.displayMetrics.density
+        val pad = (16 * density).toInt()
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, pad)
+        }
         val input = EditText(this).apply {
             inputType = InputType.TYPE_CLASS_TEXT
             setText(existing?.text ?: "")
-            val pad = (16 * resources.displayMetrics.density).toInt()
-            setPadding(pad, pad, pad, pad)
         }
+        layout.addView(input)
+        val waitLabel = android.widget.TextView(this).apply {
+            text = getString(R.string.type_wait_after_title)
+        }
+        layout.addView(waitLabel)
+        val waitPicker = NumberPicker(this).apply {
+            minValue = 0
+            maxValue = WAIT_PICKER_MAX
+            value = ((existing?.waitAfterMs ?: DEFAULT_WAIT_AFTER_MS) / 100).toInt()
+                .coerceIn(0, WAIT_PICKER_MAX)
+        }
+        layout.addView(waitPicker)
+        val mistakesLabel = android.widget.TextView(this).apply {
+            text = getString(R.string.type_mistakes_title)
+        }
+        layout.addView(mistakesLabel)
+        val mistakesGroup = android.widget.RadioGroup(this).apply {
+            orientation = android.widget.RadioGroup.VERTICAL
+        }
+        listOf(
+            getString(R.string.mistakes_off) to MistakeLevel.OFF,
+            getString(R.string.mistakes_light) to MistakeLevel.LIGHT,
+            getString(R.string.mistakes_normal) to MistakeLevel.NORMAL,
+            getString(R.string.mistakes_heavy) to MistakeLevel.HEAVY
+        ).forEach { (label, level) ->
+            mistakesGroup.addView(
+                android.widget.RadioButton(this).apply {
+                    text = label
+                    isChecked = (existing?.mistakeLevel ?: MistakeLevel.OFF) == level
+                    tag = level
+                }
+            )
+        }
+        layout.addView(mistakesGroup)
         AlertDialog.Builder(this)
             .setTitle(R.string.step_type_text)
-            .setView(input)
+            .setView(layout)
             .setPositiveButton(R.string.ok) { _, _ ->
                 val text = input.text.toString()
+                val waitAfterMs = waitPicker.value * 100L
+                val checkedId = mistakesGroup.checkedRadioButtonId
+                val level = if (checkedId >= 0) {
+                    (mistakesGroup.findViewById<android.widget.RadioButton>(checkedId)?.tag
+                        as? MistakeLevel) ?: MistakeLevel.OFF
+                } else {
+                    MistakeLevel.OFF
+                }
                 if (existing != null && position != null) {
-                    replaceStep(position, existing.copy(text = text))
+                    replaceStep(
+                        position,
+                        existing.copy(
+                            text = text, waitAfterMs = waitAfterMs, mistakeLevel = level
+                        )
+                    )
                 } else {
                     addStep(
                         Step(
                             id = WorkflowStore.newId(),
                             type = StepType.TYPE_TEXT,
                             text = text,
-                            waitAfterMs = DEFAULT_WAIT_AFTER_MS
+                            waitAfterMs = waitAfterMs,
+                            mistakeLevel = level
                         )
                     )
                 }
@@ -917,7 +1008,10 @@ class TaskEditorActivity : AppCompatActivity() {
             @Suppress("DEPRECATION")
             packageManager.queryIntentActivities(launchIntent, 0)
         }.sortedBy { it.loadLabel(packageManager).toString().lowercase() }
-        if (apps.isEmpty()) return
+        if (apps.isEmpty()) {
+            Toast.makeText(this, R.string.no_apps_found, Toast.LENGTH_SHORT).show()
+            return
+        }
         val labels = apps.map { it.loadLabel(packageManager).toString() }.toTypedArray()
         var selected = apps.indexOfFirst {
             it.activityInfo?.packageName == existing?.packageName
