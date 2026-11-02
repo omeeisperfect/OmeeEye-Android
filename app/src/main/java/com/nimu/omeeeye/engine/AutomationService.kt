@@ -30,6 +30,11 @@ class AutomationService : AccessibilityService() {
     companion object {
         var instance: AutomationService? = null
             private set
+
+        private const val TAP_STROKE_MS = 100L
+        private const val MIN_STROKE_MS = 100L
+        private const val MAX_STROKE_MS = 5000L
+        private const val GESTURE_TIMEOUT_MS = 2000L
     }
 
     override fun onServiceConnected() {
@@ -150,12 +155,5 @@ class AutomationService : AccessibilityService() {
             return false
         }
         return completed.get()
-    }
-
-    private companion object {
-        const val TAP_STROKE_MS = 100L
-        const val MIN_STROKE_MS = 100L
-        const val MAX_STROKE_MS = 5000L
-        const val GESTURE_TIMEOUT_MS = 2000L
     }
 }
