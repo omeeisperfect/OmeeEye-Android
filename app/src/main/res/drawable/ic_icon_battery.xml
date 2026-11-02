@@ -1,0 +1,10 @@
+<!-- Row icon: battery. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M15.67,4H14V2H10V4H8.33C7.6,4 7,4.6 7,5.33V18.67C7,19.4 7.6,20 8.33,20H15.67C16.4,20 17,19.4 17,18.67V5.33C17,4.6 16.4,4 15.67,4ZM11,18V6H13V18H11Z" />
+</vector>

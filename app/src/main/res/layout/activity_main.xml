@@ -74,6 +74,9 @@
     <Button
         android:id="@+id/btn_create_task"
         style="@style/OutlineButton"
+        android:drawableStart="@drawable/ic_add"
+        android:drawablePadding="8dp"
+        android:drawableTint="@color/text_primary"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
@@ -90,12 +93,18 @@
     <!-- Base-v2 bottom navigation: the 5 app sections.
          Home is selected here. Tapping a tab opens that section;
          the top 3-dot menu is unchanged. -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="12dp"
+        android:background="@color/divider" />
+
     <LinearLayout
         android:id="@+id/bottom_nav"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
         android:background="@color/card_background"
+        android:elevation="8dp"
         android:orientation="horizontal">
 
         <LinearLayout
@@ -111,13 +120,24 @@
             android:paddingTop="10dp"
             android:paddingBottom="10dp">
 
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_nav_home"
+                android:tint="@color/accent" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/nav_home"
                 android:textColor="@color/accent"
-                android:textSize="14sp"
+                android:textSize="12sp"
                 android:textStyle="bold" />
+            <View
+                android:layout_width="5dp"
+                android:layout_height="5dp"
+                android:layout_marginTop="3dp"
+                android:background="@drawable/circle_dot"
+                android:visibility="visible" />
         </LinearLayout>
 
         <LinearLayout
@@ -133,12 +153,23 @@
             android:paddingTop="10dp"
             android:paddingBottom="10dp">
 
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_nav_triggers"
+                android:tint="@color/text_secondary" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/nav_triggers"
                 android:textColor="@color/text_secondary"
-                android:textSize="14sp" />
+                android:textSize="12sp" />
+            <View
+                android:layout_width="5dp"
+                android:layout_height="5dp"
+                android:layout_marginTop="3dp"
+                android:background="@drawable/circle_dot"
+                android:visibility="gone" />
         </LinearLayout>
 
         <LinearLayout
@@ -154,12 +185,23 @@
             android:paddingTop="10dp"
             android:paddingBottom="10dp">
 
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_nav_hide"
+                android:tint="@color/text_secondary" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/nav_hide"
                 android:textColor="@color/text_secondary"
-                android:textSize="14sp" />
+                android:textSize="12sp" />
+            <View
+                android:layout_width="5dp"
+                android:layout_height="5dp"
+                android:layout_marginTop="3dp"
+                android:background="@drawable/circle_dot"
+                android:visibility="gone" />
         </LinearLayout>
 
         <LinearLayout
@@ -175,12 +217,23 @@
             android:paddingTop="10dp"
             android:paddingBottom="10dp">
 
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_nav_library"
+                android:tint="@color/text_secondary" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/nav_library"
                 android:textColor="@color/text_secondary"
-                android:textSize="14sp" />
+                android:textSize="12sp" />
+            <View
+                android:layout_width="5dp"
+                android:layout_height="5dp"
+                android:layout_marginTop="3dp"
+                android:background="@drawable/circle_dot"
+                android:visibility="gone" />
         </LinearLayout>
 
         <LinearLayout
@@ -196,12 +249,23 @@
             android:paddingTop="10dp"
             android:paddingBottom="10dp">
 
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:src="@drawable/ic_nav_settings"
+                android:tint="@color/text_secondary" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/nav_settings"
                 android:textColor="@color/text_secondary"
-                android:textSize="14sp" />
+                android:textSize="12sp" />
+            <View
+                android:layout_width="5dp"
+                android:layout_height="5dp"
+                android:layout_marginTop="3dp"
+                android:background="@drawable/circle_dot"
+                android:visibility="gone" />
         </LinearLayout>
     </LinearLayout>
 

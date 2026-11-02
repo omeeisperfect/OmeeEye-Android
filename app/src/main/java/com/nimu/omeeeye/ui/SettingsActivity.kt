@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Button
+import android.widget.RadioGroup
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.nimu.omeeeye.R
@@ -31,6 +32,27 @@ class SettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
+
+        // Appearance: Light / Dark (AMOLED) / System default.
+        // The radio is checked before the listener is attached, so the
+        // initial check does not trigger a mode change or a recreate.
+        val themeGroup = findViewById<RadioGroup>(R.id.theme_group)
+        when (ThemePrefs.getMode(this)) {
+            ThemePrefs.MODE_LIGHT -> themeGroup.check(R.id.theme_light)
+            ThemePrefs.MODE_DARK -> themeGroup.check(R.id.theme_dark)
+            else -> themeGroup.check(R.id.theme_system)
+        }
+        themeGroup.setOnCheckedChangeListener { _, checkedId ->
+            val mode = when (checkedId) {
+                R.id.theme_light -> ThemePrefs.MODE_LIGHT
+                R.id.theme_dark -> ThemePrefs.MODE_DARK
+                else -> ThemePrefs.MODE_SYSTEM
+            }
+            if (mode != ThemePrefs.getMode(this)) {
+                ThemePrefs.setMode(this, mode)
+                recreate()
+            }
+        }
 
         accessibilityStatus = findViewById(R.id.accessibility_status)
         overlayStatus = findViewById(R.id.overlay_status)

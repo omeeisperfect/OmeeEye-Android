@@ -1,0 +1,6 @@
+<!-- Small pill badge background (e.g. "Coming soon"). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/icon_tint_background" />
+    <corners android:radius="20dp" />
+</shape>

@@ -8,8 +8,10 @@
     android:layout_height="wrap_content"
     android:layout_marginBottom="12dp"
     app:cardBackgroundColor="@color/card_background"
-    app:cardCornerRadius="12dp"
-    app:cardElevation="2dp">
+    app:cardCornerRadius="16dp"
+    app:cardElevation="6dp"
+    app:strokeColor="@color/card_border"
+    app:strokeWidth="1dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -49,13 +51,18 @@
                 android:textSize="14sp" />
         </LinearLayout>
 
+        <!-- Green circular play button (mockup). Tint follows the theme:
+             white on light emerald, black on AMOLED bright emerald. -->
         <ImageButton
             android:id="@+id/btn_play"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:background="@drawable/circle_accent"
             android:contentDescription="Play"
-            android:src="@android:drawable/ic_media_play" />
+            android:padding="12dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_play"
+            android:tint="@color/accent_text" />
 
         <ImageButton
             android:id="@+id/btn_card_menu"

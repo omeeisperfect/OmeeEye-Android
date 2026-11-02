@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="AppTheme" parent="Theme.MaterialComponents.Light.NoActionBar">
+    <!-- DayNight parent: the same theme follows the Light / Dark (AMOLED) /
+         System choice. All layouts use @color/... names, so the night
+         overrides in values-night/colors.xml apply without hardcoded hex. -->
+    <style name="AppTheme" parent="Theme.MaterialComponents.DayNight.NoActionBar">
         <item name="colorPrimary">@color/accent</item>
         <item name="colorPrimaryDark">@color/accent</item>
         <item name="colorAccent">@color/accent</item>
@@ -19,10 +22,12 @@
     <style name="OutlineButton" parent="Widget.MaterialComponents.Button.OutlinedButton">
         <item name="android:textColor">@color/text_primary</item>
         <item name="strokeColor">@color/text_secondary</item>
+        <item name="cornerRadius">12dp</item>
     </style>
 
     <style name="FilledButton" parent="Widget.MaterialComponents.Button">
         <item name="android:backgroundTint">@color/accent</item>
         <item name="android:textColor">@color/accent_text</item>
+        <item name="cornerRadius">12dp</item>
     </style>
 </resources>

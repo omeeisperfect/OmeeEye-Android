@@ -16,4 +16,7 @@
     <color name="banner_start">#FFB020</color>
     <color name="banner_end">#FF7A1A</color>
     <color name="divider">#E0E0E0</color>
+    <!-- UI-improvement additions (light): card border + tinted icon/pill background -->
+    <color name="card_border">#E2E6E9</color>
+    <color name="icon_tint_background">#E6F4EE</color>
 </resources>

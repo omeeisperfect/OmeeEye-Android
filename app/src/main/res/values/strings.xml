@@ -86,6 +86,13 @@
     <string name="battery_on">Unrestricted</string>
     <string name="battery_off">Restricted — tap to change</string>
     <string name="about_text">OmeeEye Android (base build)\nPersonal app · No cloud · No account · No ads</string>
+
+    <!-- Appearance (theme) — English only -->
+    <string name="theme_title">Appearance</string>
+    <string name="theme_desc">Choose how the app looks</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark (AMOLED)</string>
+    <string name="theme_system">System default</string>
     <string name="history_title">History</string>
     <string name="history_empty">No runs yet.</string>
     <string name="trash_title">Trash</string>
