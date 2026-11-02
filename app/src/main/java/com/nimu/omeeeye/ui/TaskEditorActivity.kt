@@ -1,0 +1,569 @@
+package com.nimu.omeeeye.ui
+
+import android.content.Intent
+import android.os.Build
+import android.os.Bundle
+import android.text.InputType
+import android.widget.Button
+import android.widget.EditText
+import android.widget.NumberPicker
+import android.widget.TextView
+import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
+import androidx.recyclerview.widget.ItemTouchHelper
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import com.nimu.omeeeye.R
+import com.nimu.omeeeye.data.WorkflowStore
+import com.nimu.omeeeye.engine.WorkflowRunner
+import com.nimu.omeeeye.model.NavKey
+import com.nimu.omeeeye.model.Point
+import com.nimu.omeeeye.model.Step
+import com.nimu.omeeeye.model.StepType
+import com.nimu.omeeeye.model.Workflow
+import org.json.JSONArray
+
+/**
+ * Task editor: name a workflow, order its steps, and edit each step.
+ *
+ * Intent extra "workflow_id" (String): absent = new workflow.
+ * CANCEL and back press finish WITHOUT saving. SAVE writes via
+ * WorkflowStore.save, toasts, and finishes.
+ *
+ * Locations are NEVER typed here: there is no X/Y input anywhere in this
+ * activity. Points come only from PickPointActivity results (Tap, Swipe)
+ * or RecordActivity results (Record gesture). The workflow name and the
+ * Type-text content are text, not locations, so typing those is fine.
+ *
+ * NOTE: The WorkflowRunner.Listener signatures below were verified against
+ * the runner's actual source (engine/WorkflowRunner.kt): onStepChanged
+ * carries (index, total, step), onTick carries elapsed ms, and onFinished
+ * carries (Status, message?). Callbacks already arrive on the main thread.
+ */
+class TaskEditorActivity : AppCompatActivity() {
+
+    companion object {
+        private const val DEFAULT_WAIT_AFTER_MS = 2000L
+        private const val DEFAULT_SWIPE_DURATION_MS = 500L
+        private const val WAIT_PICKER_MAX = 300 // steps of 100 ms -> max 30,000 ms
+    }
+
+    private lateinit var nameEditText: EditText
+    private lateinit var stepListView: RecyclerView
+    private lateinit var adapter: StepAdapter
+    private var touchHelper: ItemTouchHelper? = null
+
+    private var existingWorkflow: Workflow? = null
+    private lateinit var workflowId: String
+    private val steps: MutableList<Step> = mutableListOf()
+
+    // Sub-task name lookup, cached so binds never hit disk repeatedly.
+    private val subTaskNames: MutableMap<String, String> = mutableMapOf()
+    private fun subTaskName(id: String): String? {
+        val cached = subTaskNames[id]
+        if (cached != null) return cached.ifBlank { null }
+        val name = WorkflowStore.loadActive(this)
+            .firstOrNull { it.id == id }?.name ?: ""
+        subTaskNames[id] = name
+        return name.ifBlank { null }
+    }
+
+    // ---- Pick-point state machine (Tap re-picks one point, Swipe two) ----
+    private enum class PickKind { TAP_NEW, TAP_EDIT, SWIPE_NEW, SWIPE_EDIT }
+    private var pickKind: PickKind? = null
+    private var pickEditIndex: Int = -1
+    private var pickSwipeStart: Point? = null
+
+    private val pickPointLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            val kind = pickKind
+            pickKind = null
+            if (result.resultCode != RESULT_OK || kind == null) {
+                pickSwipeStart = null
+                return@registerForActivityResult
+            }
+            val point = Point(
+                result.data?.getIntExtra("x", 0) ?: 0,
+                result.data?.getIntExtra("y", 0) ?: 0
+            )
+            when (kind) {
+                PickKind.TAP_NEW -> {
+                    addStep(
+                        Step(
+                            id = WorkflowStore.newId(),
+                            type = StepType.TAP,
+                            point = point,
+                            waitAfterMs = DEFAULT_WAIT_AFTER_MS
+                        )
+                    )
+                }
+                PickKind.TAP_EDIT -> {
+                    val old = steps.getOrNull(pickEditIndex)
+                    if (old != null) replaceStep(pickEditIndex, old.copy(point = point))
+                }
+                PickKind.SWIPE_NEW, PickKind.SWIPE_EDIT -> {
+                    val start = pickSwipeStart
+                    if (start == null) {
+                        // First pick was the start; pick the end next.
+                        pickSwipeStart = point
+                        pickKind = kind
+                        launchPick(getString(R.string.pick_end_hint))
+                    } else {
+                        pickSwipeStart = null
+                        if (kind == PickKind.SWIPE_NEW) {
+                            addStep(
+                                Step(
+                                    id = WorkflowStore.newId(),
+                                    type = StepType.SWIPE,
+                                    start = start,
+                                    end = point,
+                                    durationMs = DEFAULT_SWIPE_DURATION_MS,
+                                    waitAfterMs = DEFAULT_WAIT_AFTER_MS
+                                )
+                            )
+                        } else {
+                            val old = steps.getOrNull(pickEditIndex)
+                            if (old != null) {
+                                replaceStep(
+                                    pickEditIndex,
+                                    old.copy(start = start, end = point)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+    private val recordLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode != RESULT_OK) return@registerForActivityResult
+            val json = result.data?.getStringExtra("steps_json") ?: return@registerForActivityResult
+            try {
+                val arr = JSONArray(json)
+                val added = mutableListOf<Step>()
+                for (i in 0 until arr.length()) {
+                    added.add(WorkflowStore.stepFromJson(arr.getJSONObject(i)))
+                }
+                if (added.isNotEmpty()) {
+                    val position = steps.size
+                    steps.addAll(added)
+                    adapter.notifyItemRangeInserted(position, added.size)
+                }
+            } catch (e: Exception) {
+                Toast.makeText(
+                    this,
+                    "Recorded steps could not be loaded",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+
+    // Toasts the result of a per-step test run; step/tick updates are ignored.
+    // Callbacks already arrive on the main thread (WorkflowRunner posts them).
+    private val runnerListener = object : WorkflowRunner.Listener {
+        override fun onStepChanged(index: Int, total: Int, step: Step) {}
+        override fun onTick(elapsedMs: Long) {}
+        override fun onFinished(status: WorkflowRunner.Status, message: String?) {
+            val text = message?.ifBlank { null } ?: when (status) {
+                WorkflowRunner.Status.FINISHED -> "Step finished"
+                WorkflowRunner.Status.STOPPED -> "Step stopped"
+                WorkflowRunner.Status.FAILED -> "Step failed"
+            }
+            Toast.makeText(this@TaskEditorActivity, text, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_task_editor)
+
+        val workflowIdExtra = intent.getStringExtra("workflow_id")
+        existingWorkflow = workflowIdExtra?.let { WorkflowStore.get(this, it) }
+        workflowId = existingWorkflow?.id ?: WorkflowStore.newId()
+        existingWorkflow?.let { steps.addAll(it.steps) }
+
+        val titleView = findViewById<TextView>(R.id.editor_title)
+        titleView.text = existingWorkflow?.name?.ifBlank { null }
+            ?: getString(R.string.editor_new_title)
+        title = titleView.text
+
+        nameEditText = findViewById(R.id.workflow_name)
+        nameEditText.setText(existingWorkflow?.name ?: "")
+        stepListView = findViewById(R.id.step_list)
+
+        adapter = StepAdapter(steps, object : StepAdapter.Listener {
+            override fun onStepClicked(position: Int) = editStep(position)
+            override fun onCopyStep(position: Int) {
+                val step = steps.getOrNull(position) ?: return
+                steps.add(position + 1, step.copy(id = WorkflowStore.newId()))
+                adapter.notifyItemInserted(position + 1)
+            }
+            override fun onDeleteStep(position: Int) {
+                if (position !in steps.indices) return
+                steps.removeAt(position)
+                adapter.notifyItemRemoved(position)
+                if (position < steps.size) {
+                    adapter.notifyItemRangeChanged(position, steps.size - position)
+                }
+            }
+            override fun onPlayStep(position: Int) {
+                WorkflowRunner.runSingle(currentWorkflow(), position)
+            }
+            override fun onWaitClicked(position: Int) = showWaitAfterDialog(position)
+            override fun onStartDrag(holder: RecyclerView.ViewHolder) {
+                touchHelper?.startDrag(holder)
+            }
+            override fun subTaskName(subWorkflowId: String): String? =
+                this@TaskEditorActivity.subTaskName(subWorkflowId)
+        })
+        stepListView.layoutManager = LinearLayoutManager(this)
+        stepListView.adapter = adapter
+
+        touchHelper = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(
+            ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0
+        ) {
+            override fun onMove(
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder,
+                target: RecyclerView.ViewHolder
+            ): Boolean {
+                val from = viewHolder.bindingAdapterPosition
+                val to = target.bindingAdapterPosition
+                if (from == RecyclerView.NO_POSITION || to == RecyclerView.NO_POSITION) {
+                    return false
+                }
+                adapter.move(from, to)
+                return true
+            }
+
+            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {}
+            // Drag starts only from the btn_drag handle, never long-press.
+            override fun isLongPressDragEnabled(): Boolean = false
+        })
+        touchHelper?.attachToRecyclerView(stepListView)
+
+        findViewById<Button>(R.id.btn_add).setOnClickListener { openAddStepSheet() }
+        findViewById<Button>(R.id.btn_cancel).setOnClickListener { finish() }
+        findViewById<Button>(R.id.btn_save).setOnClickListener { saveAndFinish() }
+
+        // Back press = cancel: finish without saving. Uses the base
+        // OnBackPressedCallback API (no activity-ktx dependency).
+        onBackPressedDispatcher.addCallback(
+            this,
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    finish()
+                }
+            }
+        )
+
+        WorkflowRunner.addListener(runnerListener)
+
+        // Opened from the floating bar's target button: go straight to
+        // point picking; the picked point is appended as a Tap step below
+        // (pick-only — the point is never typed).
+        if (intent.getBooleanExtra("pick_target", false)) {
+            pickKind = PickKind.TAP_NEW
+            launchPick(getString(R.string.pick_on_screen))
+        }
+    }
+
+    override fun onDestroy() {
+        WorkflowRunner.removeListener(runnerListener)
+        super.onDestroy()
+    }
+
+    // ---------- Workflow assembly / persistence ----------
+
+    private fun currentWorkflow(): Workflow {
+        val existing = existingWorkflow
+        return Workflow(
+            id = workflowId,
+            name = nameEditText.text.toString(),
+            cycleIntervalMs = existing?.cycleIntervalMs ?: 500,
+            cycles = existing?.cycles ?: 1,
+            steps = steps.toList(),
+            deleted = existing?.deleted ?: false,
+            updatedAt = existing?.updatedAt ?: System.currentTimeMillis()
+        )
+    }
+
+    private fun saveAndFinish() {
+        WorkflowStore.save(this, currentWorkflow())
+        Toast.makeText(this, R.string.workflow_saved, Toast.LENGTH_SHORT).show()
+        finish()
+    }
+
+    private fun addStep(step: Step) {
+        steps.add(step)
+        adapter.notifyItemInserted(steps.size - 1)
+    }
+
+    private fun replaceStep(position: Int, step: Step) {
+        if (position !in steps.indices) return
+        steps[position] = step
+        adapter.notifyItemChanged(position)
+    }
+
+    // ---------- Add-step sheet ----------
+
+    private fun openAddStepSheet() {
+        val sheet = AddStepBottomSheet()
+        sheet.onStepChosenListener =
+            AddStepBottomSheet.OnStepChosenListener { type -> onAddStepType(type) }
+        sheet.onRecordRequested = { launchRecord() }
+        sheet.show(supportFragmentManager, "add_step")
+    }
+
+    private fun onAddStepType(type: StepType) {
+        when (type) {
+            StepType.TAP -> {
+                pickKind = PickKind.TAP_NEW
+                launchPick(getString(R.string.pick_on_screen))
+            }
+            StepType.SWIPE -> {
+                pickKind = PickKind.SWIPE_NEW
+                pickSwipeStart = null
+                launchPick(getString(R.string.pick_start_hint))
+            }
+            StepType.TYPE_TEXT -> showTypeTextDialog(null, null)
+            StepType.WAIT -> showWaitDurationDialog(null, null)
+            StepType.NAVIGATION -> showNavigationDialog(null, null)
+            StepType.LAUNCH_APP -> showLaunchAppDialog(null, null)
+            StepType.SUB_TASK -> showSubTaskDialog(null, null)
+        }
+    }
+
+    private fun editStep(position: Int) {
+        val step = steps.getOrNull(position) ?: return
+        when (step.type) {
+            StepType.TAP -> {
+                pickKind = PickKind.TAP_EDIT
+                pickEditIndex = position
+                launchPick(getString(R.string.pick_on_screen))
+            }
+            StepType.SWIPE -> {
+                pickKind = PickKind.SWIPE_EDIT
+                pickEditIndex = position
+                pickSwipeStart = null
+                launchPick(getString(R.string.pick_start_hint))
+            }
+            StepType.TYPE_TEXT -> showTypeTextDialog(step, position)
+            StepType.WAIT -> showWaitDurationDialog(step, position)
+            StepType.NAVIGATION -> showNavigationDialog(step, position)
+            StepType.LAUNCH_APP -> showLaunchAppDialog(step, position)
+            StepType.SUB_TASK -> showSubTaskDialog(step, position)
+        }
+    }
+
+    // ---------- Pick / record launches ----------
+
+    private fun launchPick(hint: String) {
+        val intent = Intent(this, PickPointActivity::class.java)
+        intent.putExtra("hint", hint)
+        pickPointLauncher.launch(intent)
+    }
+
+    private fun launchRecord() {
+        recordLauncher.launch(Intent(this, RecordActivity::class.java))
+    }
+
+    // ---------- Step editors (shared by create and edit) ----------
+
+    /** TYPE_TEXT: text content is the step's purpose, not a location. */
+    private fun showTypeTextDialog(existing: Step?, position: Int?) {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT
+            setText(existing?.text ?: "")
+            val pad = (16 * resources.displayMetrics.density).toInt()
+            setPadding(pad, pad, pad, pad)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.step_type_text)
+            .setView(input)
+            .setPositiveButton(R.string.ok) { _, _ ->
+                val text = input.text.toString()
+                if (existing != null && position != null) {
+                    replaceStep(position, existing.copy(text = text))
+                } else {
+                    addStep(
+                        Step(
+                            id = WorkflowStore.newId(),
+                            type = StepType.TYPE_TEXT,
+                            text = text,
+                            waitAfterMs = DEFAULT_WAIT_AFTER_MS
+                        )
+                    )
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /** WAIT step duration (not the per-step wait-after, which has its own editor). */
+    private fun showWaitDurationDialog(existing: Step?, position: Int?) {
+        val picker = NumberPicker(this).apply {
+            minValue = 0
+            maxValue = WAIT_PICKER_MAX
+            value = ((existing?.durationMs ?: 0) / 100).toInt()
+                .coerceIn(0, WAIT_PICKER_MAX)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.step_wait)
+            .setView(picker)
+            .setPositiveButton(R.string.ok) { _, _ ->
+                val durationMs = picker.value * 100L
+                if (existing != null && position != null) {
+                    replaceStep(position, existing.copy(durationMs = durationMs))
+                } else {
+                    addStep(
+                        Step(
+                            id = WorkflowStore.newId(),
+                            type = StepType.WAIT,
+                            durationMs = durationMs,
+                            waitAfterMs = DEFAULT_WAIT_AFTER_MS
+                        )
+                    )
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /** Per-step pause shown under each row ("Wait: N ms"). */
+    private fun showWaitAfterDialog(position: Int) {
+        val step = steps.getOrNull(position) ?: return
+        val picker = NumberPicker(this).apply {
+            minValue = 0
+            maxValue = WAIT_PICKER_MAX
+            value = (step.waitAfterMs / 100).toInt().coerceIn(0, WAIT_PICKER_MAX)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.step_wait)
+            .setView(picker)
+            .setPositiveButton(R.string.ok) { _, _ ->
+                replaceStep(position, step.copy(waitAfterMs = picker.value * 100L))
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun showNavigationDialog(existing: Step?, position: Int?) {
+        val labels = arrayOf(
+            getString(R.string.nav_back),
+            getString(R.string.nav_home),
+            getString(R.string.nav_recents)
+        )
+        var selected = when (existing?.navKey) {
+            NavKey.BACK -> 0
+            NavKey.HOME -> 1
+            NavKey.RECENTS -> 2
+            null -> -1
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.step_navigation)
+            .setSingleChoiceItems(labels, selected) { _, which -> selected = which }
+            .setPositiveButton(R.string.ok) { _, _ ->
+                if (selected < 0) return@setPositiveButton
+                val navKey = when (selected) {
+                    0 -> NavKey.BACK
+                    1 -> NavKey.HOME
+                    else -> NavKey.RECENTS
+                }
+                if (existing != null && position != null) {
+                    replaceStep(position, existing.copy(navKey = navKey))
+                } else {
+                    addStep(
+                        Step(
+                            id = WorkflowStore.newId(),
+                            type = StepType.NAVIGATION,
+                            navKey = navKey,
+                            waitAfterMs = DEFAULT_WAIT_AFTER_MS
+                        )
+                    )
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /** App picker: label shown, package name stored. No typed package field. */
+    private fun showLaunchAppDialog(existing: Step?, position: Int?) {
+        val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val apps = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.queryIntentActivities(
+                launchIntent,
+                android.content.pm.PackageManager.ResolveInfoFlags.of(0)
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.queryIntentActivities(launchIntent, 0)
+        }.sortedBy { it.loadLabel(packageManager).toString().lowercase() }
+        if (apps.isEmpty()) return
+        val labels = apps.map { it.loadLabel(packageManager).toString() }.toTypedArray()
+        var selected = apps.indexOfFirst {
+            it.activityInfo?.packageName == existing?.packageName
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.choose_app)
+            .setSingleChoiceItems(labels, selected) { _, which -> selected = which }
+            .setPositiveButton(R.string.ok) { _, _ ->
+                if (selected < 0) return@setPositiveButton
+                val packageName = apps[selected].activityInfo?.packageName
+                    ?: return@setPositiveButton
+                if (existing != null && position != null) {
+                    replaceStep(position, existing.copy(packageName = packageName))
+                } else {
+                    addStep(
+                        Step(
+                            id = WorkflowStore.newId(),
+                            type = StepType.LAUNCH_APP,
+                            packageName = packageName,
+                            waitAfterMs = DEFAULT_WAIT_AFTER_MS
+                        )
+                    )
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /** Sub-task picker: other active workflows only, never this workflow itself. */
+    private fun showSubTaskDialog(existing: Step?, position: Int?) {
+        val others = WorkflowStore.loadActive(this).filter { it.id != workflowId }
+        if (others.isEmpty()) {
+            AlertDialog.Builder(this)
+                .setMessage(R.string.no_workflows_to_pick)
+                .setPositiveButton(R.string.ok, null)
+                .show()
+            return
+        }
+        val labels = others.map { it.name }.toTypedArray()
+        var selected = others.indexOfFirst { it.id == existing?.subWorkflowId }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.choose_workflow)
+            .setSingleChoiceItems(labels, selected) { _, which -> selected = which }
+            .setPositiveButton(R.string.ok) { _, _ ->
+                if (selected < 0) return@setPositiveButton
+                val subWorkflowId = others[selected].id
+                if (existing != null && position != null) {
+                    replaceStep(position, existing.copy(subWorkflowId = subWorkflowId))
+                } else {
+                    addStep(
+                        Step(
+                            id = WorkflowStore.newId(),
+                            type = StepType.SUB_TASK,
+                            subWorkflowId = subWorkflowId,
+                            waitAfterMs = DEFAULT_WAIT_AFTER_MS
+                        )
+                    )
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+}

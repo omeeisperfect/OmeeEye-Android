@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OmeeEye</string>
+
+    <!-- Home -->
+    <string name="home_title">My workflows</string>
+    <string name="menu_sort">Sort</string>
+    <string name="menu_history">History</string>
+    <string name="menu_settings">Settings</string>
+    <string name="menu_trash">Trash</string>
+    <string name="create_task">CREATE TASK</string>
+    <string name="close">CLOSE</string>
+    <string name="search_hint">Search workflows…</string>
+    <string name="no_workflows">No workflows yet. Tap CREATE TASK to make one.</string>
+    <string name="cycle_interval_format">Cycle interval: %1$d ms</string>
+    <string name="cycles_format">Cycles: %1$d</string>
+    <string name="card_menu_edit">Edit</string>
+    <string name="card_menu_duplicate">Duplicate</string>
+    <string name="card_menu_delete">Delete</string>
+    <string name="card_menu_floating_bar">Floating bar</string>
+
+    <!-- Task editor -->
+    <string name="editor_new_title">New workflow</string>
+    <string name="editor_add">ADD</string>
+    <string name="editor_cancel">CANCEL</string>
+    <string name="editor_save">SAVE</string>
+    <string name="wait_format">Wait: %1$d ms</string>
+    <string name="step_count_format">%1$d</string>
+    <string name="workflow_name_hint">Workflow name</string>
+
+    <!-- Add-step menu -->
+    <string name="add_step_title">Add step</string>
+    <string name="group_basic">Basic</string>
+    <string name="group_sub_task">Sub-task</string>
+    <string name="step_tap">Tap</string>
+    <string name="step_tap_desc">Tap a point picked on screen</string>
+    <string name="step_swipe">Swipe</string>
+    <string name="step_swipe_desc">Swipe between two points picked on screen</string>
+    <string name="step_type_text">Type text</string>
+    <string name="step_type_text_desc">Type text into the focused field</string>
+    <string name="step_wait">Wait</string>
+    <string name="step_wait_desc">Pause for a set time before the next step</string>
+    <string name="step_record">Record gesture</string>
+    <string name="step_record_desc">Record your taps and swipes into steps</string>
+    <string name="step_navigation">Navigation keys</string>
+    <string name="step_navigation_desc">Press Back, Home, or Recents</string>
+    <string name="step_launch_app">Launch app</string>
+    <string name="step_launch_app_desc">Open an installed app</string>
+    <string name="step_sub_task">Add sub-task</string>
+    <string name="step_sub_task_desc">Run another workflow inside this one</string>
+
+    <!-- Step editors -->
+    <string name="pick_on_screen">Pick on screen</string>
+    <string name="pick_hint">Tap anywhere to pick the point</string>
+    <string name="pick_point_title">Pick point</string>
+    <string name="pick_start_hint">Tap to pick the swipe start point</string>
+    <string name="pick_end_hint">Tap to pick the swipe end point</string>
+    <string name="cancel">Cancel</string>
+    <string name="ok">OK</string>
+    <string name="done">Done</string>
+    <string name="record_hint">Tap and swipe on screen, then tap Done</string>
+    <string name="nav_back">Back</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_recents">Recents</string>
+    <string name="choose_app">Choose an app</string>
+    <string name="choose_workflow">Choose a workflow</string>
+    <string name="no_workflows_to_pick">No other workflow exists yet</string>
+
+    <!-- Floating bars -->
+    <string name="floating_running">OmeeEye is running</string>
+    <string name="floating_tap_to_open">Tap to open OmeeEye</string>
+    <string name="step_format">Step: %1$d/%2$d</string>
+
+    <!-- Settings / History / Trash -->
+    <string name="settings_title">Settings</string>
+    <string name="accessibility_label">Accessibility service</string>
+    <string name="accessibility_desc">Required for taps, swipes, and keys</string>
+    <string name="accessibility_on">ON</string>
+    <string name="accessibility_off">OFF — tap to enable</string>
+    <string name="overlay_label">Display over other apps</string>
+    <string name="overlay_desc">Required for the floating bars</string>
+    <string name="overlay_on">Allowed</string>
+    <string name="overlay_off">Not allowed — tap to allow</string>
+    <string name="battery_label">Battery unrestricted</string>
+    <string name="battery_desc">Keeps a run alive in the background</string>
+    <string name="battery_on">Unrestricted</string>
+    <string name="battery_off">Restricted — tap to change</string>
+    <string name="about_text">OmeeEye Android (base build)\nPersonal app · No cloud · No account · No ads</string>
+    <string name="history_title">History</string>
+    <string name="history_empty">No runs yet.</string>
+    <string name="trash_title">Trash</string>
+    <string name="trash_empty">Trash is empty.</string>
+    <string name="restore">Restore</string>
+    <string name="delete_forever">Delete forever</string>
+
+    <!-- Accessibility service -->
+    <string name="accessibility_description">OmeeEye performs taps, swipes, and key presses for your saved workflows. It does not read screen content except to type into the field you focused and to paste text there.</string>
+
+    <!-- Runner messages -->
+    <string name="run_failed_no_service">Accessibility service is not enabled. Enable it in Settings first.</string>
+    <string name="run_failed_step">Step %1$d failed: %2$s</string>
+    <string name="tap_step_added">Tap step added.</string>
+    <string name="workflow_saved">Workflow saved.</string>
+    <string name="workflow_deleted">Moved to Trash.</string>
+    <string name="workflow_restored">Restored.</string>
+    <string name="workflow_deleted_forever">Deleted permanently.</string>
+</resources>

@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Idle floating bar: shown when a workflow is bound but not running. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:background="@drawable/floating_bg"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:padding="8dp">
+
+    <ImageButton
+        android:id="@+id/btn_configure"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Configure"
+        android:src="@android:drawable/ic_menu_manage"
+        android:tint="@color/overlay_bar_text" />
+
+    <ImageButton
+        android:id="@+id/btn_play"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Play"
+        android:src="@android:drawable/ic_media_play"
+        android:tint="@color/overlay_bar_text" />
+
+    <ImageButton
+        android:id="@+id/btn_target"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Pick a point"
+        android:src="@android:drawable/ic_menu_mylocation"
+        android:tint="@color/overlay_bar_text" />
+
+    <ImageButton
+        android:id="@+id/btn_close"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Close"
+        android:src="@android:drawable/ic_menu_close_clear_cancel"
+        android:tint="@color/overlay_bar_text" />
+
+    <TextView
+        android:id="@+id/btn_expand"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center"
+        android:text="»"
+        android:textColor="@color/overlay_bar_text"
+        android:textSize="24sp" />
+
+</LinearLayout>

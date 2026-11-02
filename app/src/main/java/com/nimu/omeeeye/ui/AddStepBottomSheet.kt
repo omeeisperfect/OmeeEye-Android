@@ -1,0 +1,194 @@
+package com.nimu.omeeeye.ui
+
+import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.Button
+import android.widget.ImageView
+import android.widget.TextView
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.bottomsheet.BottomSheetDialogFragment
+import com.nimu.omeeeye.R
+import com.nimu.omeeeye.model.StepType
+
+/**
+ * "Add step" menu, grouped into sections with headers.
+ *
+ * NOTE on the listener: StepType has no value for "Record gesture", so the
+ * sheet delivers the seven real step types through [OnStepChosenListener]
+ * and record-gesture taps through the separate [onRecordRequested] lambda.
+ * Both are set by TaskEditorActivity before the sheet is shown, and the
+ * sheet dismisses itself on any row tap.
+ *
+ * Sections are data, not code: later groups are added by appending another
+ * [Section] to [sections] — the adapter below renders any list of sections.
+ */
+class AddStepBottomSheet : BottomSheetDialogFragment() {
+
+    /** Single-method listener for the seven real step types. */
+    fun interface OnStepChosenListener {
+        fun onStepChosen(type: StepType)
+    }
+
+    var onStepChosenListener: OnStepChosenListener? = null
+    var onRecordRequested: (() -> Unit)? = null
+
+    private data class Row(
+        val iconRes: Int,
+        val titleRes: Int,
+        val descRes: Int,
+        /** Null for the Record gesture row, which is not a StepType. */
+        val type: StepType?,
+        val isRecord: Boolean
+    )
+
+    private data class Section(val titleRes: Int, val rows: List<Row>)
+
+    private val sections: List<Section> = listOf(
+        Section(
+            R.string.group_basic,
+            listOf(
+                Row(
+                    android.R.drawable.ic_menu_mylocation,
+                    R.string.step_tap, R.string.step_tap_desc,
+                    StepType.TAP, false
+                ),
+                Row(
+                    android.R.drawable.ic_menu_directions,
+                    R.string.step_swipe, R.string.step_swipe_desc,
+                    StepType.SWIPE, false
+                ),
+                Row(
+                    android.R.drawable.ic_menu_edit,
+                    R.string.step_type_text, R.string.step_type_text_desc,
+                    StepType.TYPE_TEXT, false
+                ),
+                Row(
+                    android.R.drawable.ic_menu_recent_history,
+                    R.string.step_wait, R.string.step_wait_desc,
+                    StepType.WAIT, false
+                ),
+                Row(
+                    android.R.drawable.ic_media_play,
+                    R.string.step_record, R.string.step_record_desc,
+                    null, true
+                ),
+                Row(
+                    android.R.drawable.ic_menu_revert,
+                    R.string.step_navigation, R.string.step_navigation_desc,
+                    StepType.NAVIGATION, false
+                ),
+                Row(
+                    android.R.drawable.ic_menu_send,
+                    R.string.step_launch_app, R.string.step_launch_app_desc,
+                    StepType.LAUNCH_APP, false
+                )
+            )
+        ),
+        Section(
+            R.string.group_sub_task,
+            listOf(
+                Row(
+                    android.R.drawable.ic_menu_agenda,
+                    R.string.step_sub_task, R.string.step_sub_task_desc,
+                    StepType.SUB_TASK, false
+                )
+            )
+        )
+    )
+
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View? {
+        val view = inflater.inflate(R.layout.bottom_sheet_add_step, container, false)
+
+        val list = view.findViewById<RecyclerView>(R.id.add_step_list)
+        list.layoutManager = LinearLayoutManager(requireContext())
+        list.adapter = AddStepAdapter(sections) { row ->
+            if (row.isRecord) {
+                onRecordRequested?.invoke()
+            } else {
+                row.type?.let { onStepChosenListener?.onStepChosen(it) }
+            }
+            dismiss()
+        }
+
+        view.findViewById<Button>(R.id.btn_close_sheet).setOnClickListener {
+            dismiss()
+        }
+        return view
+    }
+
+    // Flattened adapter items: one header item per section, then its rows.
+    private sealed interface ListItem {
+        data class Group(val titleRes: Int) : ListItem
+        data class StepRow(val row: Row) : ListItem
+    }
+
+    private class AddStepAdapter(
+        sections: List<Section>,
+        private val onRowClicked: (Row) -> Unit
+    ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+
+        companion object {
+            private const val VIEW_TYPE_GROUP = 0
+            private const val VIEW_TYPE_ROW = 1
+        }
+
+        private val items: List<ListItem> = buildList {
+            sections.forEach { section ->
+                add(ListItem.Group(section.titleRes))
+                section.rows.forEach { row -> add(ListItem.StepRow(row)) }
+            }
+        }
+
+        class GroupViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+            val groupTitle: TextView = view.findViewById(R.id.group_title)
+        }
+
+        class RowViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+            val rowIcon: ImageView = view.findViewById(R.id.row_icon)
+            val rowTitle: TextView = view.findViewById(R.id.row_title)
+            val rowDesc: TextView = view.findViewById(R.id.row_desc)
+        }
+
+        override fun getItemViewType(position: Int): Int = when (items[position]) {
+            is ListItem.Group -> VIEW_TYPE_GROUP
+            is ListItem.StepRow -> VIEW_TYPE_ROW
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+            val inflater = LayoutInflater.from(parent.context)
+            return if (viewType == VIEW_TYPE_GROUP) {
+                GroupViewHolder(
+                    inflater.inflate(R.layout.item_add_step_group, parent, false)
+                )
+            } else {
+                RowViewHolder(
+                    inflater.inflate(R.layout.item_add_step_row, parent, false)
+                )
+            }
+        }
+
+        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+            when (val item = items[position]) {
+                is ListItem.Group -> {
+                    (holder as GroupViewHolder).groupTitle.setText(item.titleRes)
+                }
+                is ListItem.StepRow -> {
+                    val rowHolder = holder as RowViewHolder
+                    rowHolder.rowIcon.setImageResource(item.row.iconRes)
+                    rowHolder.rowTitle.setText(item.row.titleRes)
+                    rowHolder.rowDesc.setText(item.row.descRes)
+                    rowHolder.itemView.setOnClickListener { onRowClicked(item.row) }
+                }
+            }
+        }
+
+        override fun getItemCount(): Int = items.size
+    }
+}

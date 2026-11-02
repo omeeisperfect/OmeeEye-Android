@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Light theme, reference-like: white cards, green accent -->
+    <color name="background">#F4F5F7</color>
+    <color name="card_background">#FFFFFF</color>
+    <color name="card_active">#0E7C5B</color>
+    <color name="card_active_text">#FFFFFF</color>
+    <color name="card_active_sub">#CDE8DF</color>
+    <color name="text_primary">#1A1A1A</color>
+    <color name="text_secondary">#757575</color>
+    <color name="accent">#0E7C5B</color>
+    <color name="accent_text">#FFFFFF</color>
+    <color name="danger">#E53935</color>
+    <color name="overlay_bar">#2F3B52</color>
+    <color name="overlay_bar_text">#FFFFFF</color>
+    <color name="banner_start">#FFB020</color>
+    <color name="banner_end">#FF7A1A</color>
+    <color name="divider">#E0E0E0</color>
+</resources>

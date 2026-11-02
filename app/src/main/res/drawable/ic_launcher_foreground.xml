@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Simple eye-like mark: white ring with a white pupil on the green background. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,34 C72,34 88,44 96,54 C88,64 72,74 54,74 C36,74 20,64 12,54 C20,44 36,34 54,34 Z"
+        android:fillType="evenOdd" />
+    <path
+        android:fillColor="#0E7C5B"
+        android:pathData="M54,42 m-12,0 a12,12 0 1,0 24,0 a12,12 0 1,0 -24,0" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,48 m-6,0 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0" />
+</vector>

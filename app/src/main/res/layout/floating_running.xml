@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Running panel: shown while a workflow is executing. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:background="@drawable/floating_bg"
+    android:orientation="vertical"
+    android:padding="10dp">
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <ImageButton
+            android:id="@+id/run_btn_stop"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Stop"
+            android:src="@drawable/stop_square" />
+
+        <ImageButton
+            android:id="@+id/run_btn_pause"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Pause"
+            android:src="@android:drawable/ic_media_pause"
+            android:tint="@color/overlay_bar_text" />
+
+        <TextView
+            android:id="@+id/run_text_timer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:text="00:00:00"
+            android:textColor="@color/overlay_bar_text"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/run_text_step"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:text="Step: 0/0"
+            android:textColor="@color/overlay_bar_text"
+            android:textSize="14sp" />
+
+        <ImageButton
+            android:id="@+id/run_btn_more"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="More"
+            android:src="@android:drawable/ic_menu_more"
+            android:tint="@color/overlay_bar_text" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/run_btn_back"
+            android:layout_width="52dp"
+            android:layout_height="44dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Back key"
+            android:text="←"
+            android:textColor="@color/overlay_bar_text"
+            android:textSize="20sp" />
+
+        <Button
+            android:id="@+id/run_btn_home"
+            android:layout_width="52dp"
+            android:layout_height="44dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Home key"
+            android:text="⌂"
+            android:textColor="@color/overlay_bar_text"
+            android:textSize="20sp" />
+
+        <Button
+            android:id="@+id/run_btn_recents"
+            android:layout_width="52dp"
+            android:layout_height="44dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Recents key"
+            android:text="▢"
+            android:textColor="@color/overlay_bar_text"
+            android:textSize="20sp" />
+    </LinearLayout>
+
+</LinearLayout>
