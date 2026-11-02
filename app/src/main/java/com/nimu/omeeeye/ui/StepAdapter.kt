@@ -34,6 +34,7 @@ class StepAdapter(
         fun onCopyStep(position: Int)
         fun onDeleteStep(position: Int)
         fun onPlayStep(position: Int)
+        fun onStepMenu(position: Int, anchor: View)
         fun onWaitClicked(position: Int)
         fun onStartDrag(holder: RecyclerView.ViewHolder)
         /** Display name of a sub-task workflow, or null if it no longer exists. */
@@ -49,6 +50,7 @@ class StepAdapter(
         val btnDrag: ImageButton = view.findViewById(R.id.btn_drag)
         val btnDelete: ImageButton = view.findViewById(R.id.btn_delete)
         val btnStepPlay: ImageButton = view.findViewById(R.id.btn_step_play)
+        val btnMenu: ImageButton = view.findViewById(R.id.btn_step_menu)
     }
 
     /** Called by the activity's ItemTouchHelper when a drag moves a row. */
@@ -94,6 +96,10 @@ class StepAdapter(
             val pos = holder.bindingAdapterPosition
             if (pos != RecyclerView.NO_POSITION) listener.onPlayStep(pos)
         }
+        holder.btnMenu.setOnClickListener {
+            val pos = holder.bindingAdapterPosition
+            if (pos != RecyclerView.NO_POSITION) listener.onStepMenu(pos, holder.btnMenu)
+        }
         // Drag starts only from this handle, never from a long-press on the row.
         holder.btnDrag.setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_DOWN) {
@@ -106,32 +112,32 @@ class StepAdapter(
     override fun getItemCount(): Int = steps.size
 
     private fun iconFor(type: StepType): Int = when (type) {
-        StepType.TAP -> android.R.drawable.ic_menu_mylocation
-        StepType.SWIPE -> android.R.drawable.ic_menu_directions
-        StepType.TYPE_TEXT -> android.R.drawable.ic_menu_edit
-        StepType.WAIT -> android.R.drawable.ic_menu_recent_history
-        StepType.NAVIGATION -> android.R.drawable.ic_menu_revert
-        StepType.LAUNCH_APP -> android.R.drawable.ic_menu_send
-        StepType.SUB_TASK -> android.R.drawable.ic_menu_agenda
-        StepType.TYPE_CODE -> android.R.drawable.ic_menu_save
-        StepType.TYPE_EXCEL_ROW -> android.R.drawable.ic_menu_month
-        StepType.BUTTON_RECOGNITION -> android.R.drawable.ic_menu_view
-        StepType.IMAGE_RECOGNITION -> android.R.drawable.ic_menu_gallery
-        StepType.COLOR_RECOGNITION -> android.R.drawable.ic_menu_crop
-        StepType.OCR_READ -> android.R.drawable.ic_menu_search
-        StepType.SCREENSHOT -> android.R.drawable.ic_menu_camera
-        StepType.PASTE -> android.R.drawable.ic_menu_upload
-        StepType.VIBRATION -> android.R.drawable.ic_menu_call
-        StepType.SOUND -> android.R.drawable.ic_media_play
-        StepType.SCREEN_OFF -> android.R.drawable.ic_menu_day
-        StepType.AREA_CLICK -> android.R.drawable.ic_menu_zoom
-        StepType.WAIT_RANDOM -> android.R.drawable.ic_menu_rotate
-        StepType.STOP_TASK -> android.R.drawable.ic_menu_close_clear_cancel
-        StepType.INTENT_URI -> android.R.drawable.ic_menu_share
-        StepType.NETWORK_GET -> android.R.drawable.ic_menu_compass
-        StepType.SLIDE_LIST -> android.R.drawable.ic_menu_sort_by_size
-        StepType.QS_TILE -> android.R.drawable.ic_menu_preferences
-        StepType.POWER_DIALOG -> android.R.drawable.ic_lock_power_off
+        StepType.TAP -> R.drawable.ic_step_tap
+        StepType.SWIPE -> R.drawable.ic_step_swipe
+        StepType.TYPE_TEXT -> R.drawable.ic_step_typetext
+        StepType.WAIT -> R.drawable.ic_step_wait
+        StepType.NAVIGATION -> R.drawable.ic_step_nav
+        StepType.LAUNCH_APP -> R.drawable.ic_step_launch
+        StepType.SUB_TASK -> R.drawable.ic_step_subtask
+        StepType.TYPE_CODE -> R.drawable.ic_step_code
+        StepType.TYPE_EXCEL_ROW -> R.drawable.ic_step_excel
+        StepType.BUTTON_RECOGNITION -> R.drawable.ic_step_button
+        StepType.IMAGE_RECOGNITION -> R.drawable.ic_step_image
+        StepType.COLOR_RECOGNITION -> R.drawable.ic_step_color
+        StepType.OCR_READ -> R.drawable.ic_step_ocr
+        StepType.SCREENSHOT -> R.drawable.ic_step_screenshot
+        StepType.PASTE -> R.drawable.ic_step_paste
+        StepType.VIBRATION -> R.drawable.ic_step_vibration
+        StepType.SOUND -> R.drawable.ic_step_sound
+        StepType.SCREEN_OFF -> R.drawable.ic_step_screenoff
+        StepType.AREA_CLICK -> R.drawable.ic_step_area
+        StepType.WAIT_RANDOM -> R.drawable.ic_step_waitrandom
+        StepType.STOP_TASK -> R.drawable.ic_step_stop
+        StepType.INTENT_URI -> R.drawable.ic_step_intent
+        StepType.NETWORK_GET -> R.drawable.ic_step_network
+        StepType.SLIDE_LIST -> R.drawable.ic_step_slide
+        StepType.QS_TILE -> R.drawable.ic_step_qs
+        StepType.POWER_DIALOG -> R.drawable.ic_step_power
     }
 
     private fun titleFor(context: android.content.Context, step: Step): String {

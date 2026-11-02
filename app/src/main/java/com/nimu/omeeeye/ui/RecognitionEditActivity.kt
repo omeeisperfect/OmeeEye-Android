@@ -28,6 +28,7 @@ import com.nimu.omeeeye.data.DataFileStore
 import com.nimu.omeeeye.data.DataSourceLoader
 import com.nimu.omeeeye.data.WorkflowStore
 import com.nimu.omeeeye.engine.AutomationService
+import com.nimu.omeeeye.engine.OcrEngine
 import com.nimu.omeeeye.model.AfterRetryMode
 import com.nimu.omeeeye.model.AreaMode
 import com.nimu.omeeeye.model.MatchMode
@@ -74,6 +75,21 @@ import java.io.File
  * Sub-action steps get fresh ids via WorkflowStore.newId() and a
  * waitAfterMs of 2000, matching the main editor's convention.
  */
+/** One-shot holder for an OCR test read (fix round, item 6). The editor
+ * moves its task to the back so the screenshot shows the real screen,
+ * then returns; the result waits here for onResume(). If the editor is
+ * finished meanwhile, active is false and the result is dropped instead
+ * of yanking the user back into a dead editor. */
+object OcrTestReadStore {
+    var active: Boolean = false
+    var result: String? = null
+    fun take(): String? {
+        val r = result
+        result = null
+        return r
+    }
+}
+
 class RecognitionEditActivity : AppCompatActivity() {
 
     companion object {
@@ -173,6 +189,10 @@ class RecognitionEditActivity : AppCompatActivity() {
     private lateinit var pickerCycles: NumberPicker
     private lateinit var btnPickAnchor: Button
     private lateinit var textAnchorStatus: TextView
+    private var textButtonDetails: TextView? = null
+    // OCR test-read preview (fix round, item 6): created in
+    // addProgrammaticSections for OCR steps only.
+    private var textOcrPreview: TextView? = null
 
     // ---- Overlay pick state ----
     // Which on-screen pick is in flight for the overlay:
@@ -221,6 +241,15 @@ class RecognitionEditActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // OCR test-read result (fix round, item 6): show whatever the
+        // read actually found (or that nothing was found) as soon as
+        // the editor is visible again.
+        OcrTestReadStore.take()?.let { result ->
+            textOcrPreview?.let { preview ->
+                preview.text = result
+                preview.visibility = View.VISIBLE
+            }
+        }
         // Button capture (item 3): a capture stored by
         // ButtonCaptureService fills the identification fields and is
         // consumed (cleared) here. Only non-empty parts overwrite:
@@ -238,6 +267,16 @@ class RecognitionEditActivity : AppCompatActivity() {
             }
             if (captured.description.isNotEmpty()) {
                 editButtonDesc.setText(captured.description)
+            }
+            // The detail summary opens right here, above the fields,
+            // and the form scrolls to it so the capture is visible
+            // instead of silently filling fields below the fold.
+            refreshButtonDetails()
+            val buttonGroup = findViewById<View>(R.id.group_button)
+            buttonGroup.post {
+                val content = findViewById<android.view.ViewGroup>(android.R.id.content)
+                val scroll = content?.getChildAt(0) as? android.widget.ScrollView
+                scroll?.smoothScrollTo(0, buttonGroup.top)
             }
         }
         // Resume a permission-blocked pick the moment the grant exists.
@@ -390,6 +429,7 @@ class RecognitionEditActivity : AppCompatActivity() {
                             setRegion(left, top, right, bottom)
                             areaMode = AreaMode.REGION
                             refreshAreaViews()
+                            refreshButtonDetails()
                             refreshRegionStatuses()
                         }
                     }
@@ -630,6 +670,19 @@ class RecognitionEditActivity : AppCompatActivity() {
         // ButtonCaptureStore and is consumed in onResume().
         if (stepType == StepType.BUTTON_RECOGNITION) {
             val buttonGroup = findViewById<LinearLayout>(R.id.group_button)
+            // Detail summary (fix round, item 4): after a capture, the
+            // captured element's details show here, clearly labelled,
+            // in the reference order — Judgment method, Recognition
+            // area, Button text, Button ID, Button description — above
+            // the editable fields. The success / failure sections below
+            // are untouched.
+            textButtonDetails = TextView(this).apply {
+                textSize = 14f
+                val pad = (4 * resources.displayMetrics.density).toInt()
+                setPadding(0, 0, 0, pad)
+                visibility = View.GONE
+            }
+            buttonGroup.addView(textButtonDetails, 0)
             buttonGroup.addView(
                 Button(this).apply {
                     text = getString(R.string.btn_capture_from_screen)
@@ -637,6 +690,140 @@ class RecognitionEditActivity : AppCompatActivity() {
                 }
             )
         }
+        // OCR test read (fix round, item 6): reads the picked region
+        // (or the whole screen in Fullscreen mode) right now and shows
+        // what was actually detected, instead of storing it silently.
+        if (stepType == StepType.OCR_READ) {
+            val ocrGroup = findViewById<LinearLayout>(R.id.group_ocr)
+            textOcrPreview = TextView(this).apply {
+                textSize = 14f
+                visibility = View.GONE
+            }
+            ocrGroup.addView(
+                Button(this).apply {
+                    text = getString(R.string.ocr_test_read)
+                    setOnClickListener { startOcrTestRead() }
+                }
+            )
+            ocrGroup.addView(textOcrPreview)
+        }
+    }
+
+    /** OCR test read (fix round, item 6). The editor moves its task to
+     * the back so the screenshot shows the real screen, not this
+     * editor (the same reason template capture hides its overlay);
+     * after a short delay the screenshot is read and the editor is
+     * brought back with the result, shown in the preview line. */
+    private fun startOcrTestRead() {
+        val preview = textOcrPreview ?: return
+        val region = when {
+            hasRegion -> android.graphics.Rect(
+                regionLeft, regionTop, regionRight, regionBottom
+            )
+            areaMode == AreaMode.FULLSCREEN -> null
+            else -> {
+                Toast.makeText(this, R.string.ocr_test_no_region, Toast.LENGTH_SHORT).show()
+                return
+            }
+        }
+        OcrTestReadStore.active = true
+        OcrTestReadStore.result = null
+        preview.visibility = View.GONE
+        moveTaskToBack(true)
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            Thread {
+                val resultText: String = run {
+                    val service = AutomationService.instance
+                        ?: return@run getString(R.string.ocr_test_no_service)
+                    val shot = try {
+                        service.takeScreenshotBitmap()
+                    } catch (e: Exception) {
+                        null
+                    } ?: return@run getString(
+                        R.string.ocr_test_no_shot,
+                        service.lastScreenshotError ?: "unknown"
+                    )
+                    try {
+                        val read = OcrEngine.read(shot, region).text.trim()
+                        if (read.isEmpty()) {
+                            getString(R.string.ocr_test_no_text)
+                        } else {
+                            getString(R.string.ocr_test_detected, read.take(200))
+                        }
+                    } catch (e: Exception) {
+                        getString(R.string.ocr_test_no_text)
+                    } finally {
+                        try {
+                            shot.recycle()
+                        } catch (ignored: Exception) {
+                        }
+                    }
+                }
+                runOnUiThread {
+                    if (!OcrTestReadStore.active) return@runOnUiThread
+                    OcrTestReadStore.result = resultText
+                    // Same CLEAR_TOP + SINGLE_TOP reuse as the overlay
+                    // finish path: the existing editor comes forward.
+                    val intent = Intent(this, RecognitionEditActivity::class.java).apply {
+                        addFlags(
+                            Intent.FLAG_ACTIVITY_NEW_TASK or
+                                Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                                Intent.FLAG_ACTIVITY_SINGLE_TOP
+                        )
+                    }
+                    startActivity(intent)
+                }
+            }.start()
+        }, 700)
+    }
+
+    override fun onDestroy() {
+        // A finished editor must never be yanked back by a test read
+        // that completes after the user left.
+        OcrTestReadStore.active = false
+        super.onDestroy()
+    }
+
+    /** Button detail summary (fix round, item 4). Shows the captured
+     * element's identification, clearly labelled, in the reference
+     * order. Shown whenever anything is captured or picked; hidden for
+     * a fresh, still-empty Button step. */
+    private fun refreshButtonDetails() {
+        val summary = textButtonDetails ?: return
+        if (stepType != StepType.BUTTON_RECOGNITION ||
+            !::editButtonText.isInitialized
+        ) {
+            summary.visibility = View.GONE
+            return
+        }
+        val empty = getString(R.string.rec_details_empty)
+        val text = editButtonText.text.toString().trim()
+        val id = editButtonId.text.toString().trim()
+        val desc = editButtonDesc.text.toString().trim()
+        if (text.isEmpty() && id.isEmpty() && desc.isEmpty() && !hasRegion) {
+            summary.visibility = View.GONE
+            return
+        }
+        val judgment = when (matchMode) {
+            MatchMode.EXACT -> getString(R.string.rec_judgment_exact)
+            MatchMode.PARTIAL -> getString(R.string.rec_judgment_partial)
+        }
+        val area = when (areaMode) {
+            AreaMode.FULLSCREEN -> getString(R.string.rec_area_fullscreen)
+            AreaMode.REGION -> if (hasRegion) {
+                "${getString(R.string.rec_area_region)} " +
+                    "($regionLeft, $regionTop, $regionRight, $regionBottom)"
+            } else {
+                getString(R.string.rec_area_region)
+            }
+        }
+        summary.text = getString(R.string.rec_button_details_title) + "\n" +
+            "${getString(R.string.rec_judgment_label)}: $judgment\n" +
+            "${getString(R.string.rec_area_label)}: $area\n" +
+            "${getString(R.string.rec_button_text_label)}: ${text.ifEmpty { empty }}\n" +
+            "${getString(R.string.rec_button_id_label)}: ${id.ifEmpty { empty }}\n" +
+            "${getString(R.string.rec_button_desc_label)}: ${desc.ifEmpty { empty }}"
+        summary.visibility = View.VISIBLE
     }
 
     private fun refreshAnchorViews() {
@@ -797,6 +984,7 @@ class RecognitionEditActivity : AppCompatActivity() {
     private fun refreshAll() {
         refreshJudgmentButton()
         refreshAreaViews()
+        refreshButtonDetails()
         refreshRegionStatuses()
         refreshTemplateViews()
         refreshColorViews()
@@ -1202,6 +1390,7 @@ class RecognitionEditActivity : AppCompatActivity() {
             .setPositiveButton(R.string.ok) { _, _ ->
                 matchMode = if (selected == 0) MatchMode.EXACT else MatchMode.PARTIAL
                 refreshJudgmentButton()
+                refreshButtonDetails()
             }
             .setNegativeButton(R.string.cancel, null)
             .show()
@@ -1219,6 +1408,7 @@ class RecognitionEditActivity : AppCompatActivity() {
             .setPositiveButton(R.string.ok) { _, _ ->
                 areaMode = if (selected == 1) AreaMode.REGION else AreaMode.FULLSCREEN
                 refreshAreaViews()
+                refreshButtonDetails()
                 refreshSaveEnabled()
             }
             .setNegativeButton(R.string.cancel, null)

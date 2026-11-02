@@ -105,28 +105,52 @@
             android:orientation="vertical"
             android:padding="12dp">
 
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/rec_button_text_label"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp" />
+
             <EditText
                 android:id="@+id/edit_button_text"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
                 android:hint="@string/rec_button_text_hint"
                 android:inputType="text"
                 android:singleLine="true" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/rec_button_id_label"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp" />
 
             <EditText
                 android:id="@+id/edit_button_id"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="4dp"
                 android:hint="@string/rec_button_id_hint"
                 android:inputType="text"
                 android:singleLine="true" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/rec_button_desc_label"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp" />
 
             <EditText
                 android:id="@+id/edit_button_desc"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="4dp"
                 android:hint="@string/rec_button_desc_hint"
                 android:inputType="text"
                 android:singleLine="true" />

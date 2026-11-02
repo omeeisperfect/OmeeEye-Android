@@ -6,6 +6,7 @@ import android.content.pm.ShortcutManager
 import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -133,7 +134,30 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onFloatingBar(workflow: Workflow) {
+                // Real cause of "app minimises, no bar": when the overlay
+                // permission is missing, FloatingService.showIdle used to
+                // return silently, so the tap looked like a minimise.
+                // Show the guide dialog instead of failing silently, and
+                // move this task to the back so the bar sits over the
+                // real screen underneath (the overlay alone is not
+                // enough when the app itself covers the display).
+                if (!Settings.canDrawOverlays(this@MainActivity)) {
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle(R.string.overlay_pick_title)
+                        .setMessage(R.string.overlay_pick_permission)
+                        .setPositiveButton(R.string.overlay_pick_open_settings) { _, _ ->
+                            val intent = Intent(
+                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:${packageName}")
+                            )
+                            startActivity(intent)
+                        }
+                        .setNegativeButton(R.string.cancel, null)
+                        .show()
+                    return
+                }
                 FloatingService.startIdle(this@MainActivity, workflow.id)
+                moveTaskToBack(true)
             }
 
             override fun onPlay(workflow: Workflow) {

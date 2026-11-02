@@ -27,6 +27,7 @@
 
         <ImageView
             android:id="@+id/step_icon"
+        android:tint="?attr/colorControlNormal"
             android:layout_width="24dp"
             android:layout_height="24dp"
             android:layout_marginStart="8dp" />
@@ -90,5 +91,14 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="Run just this step"
             android:src="@android:drawable/ic_media_play" />
+
+        <ImageButton
+            android:id="@+id/btn_step_menu"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Step actions"
+            android:src="@drawable/ic_more"
+            android:tint="?attr/colorControlNormal" />
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>

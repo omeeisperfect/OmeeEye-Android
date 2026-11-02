@@ -145,6 +145,15 @@ class TaskEditorActivity : AppCompatActivity() {
             OverlayPickStore.CANCELLED_KIND -> {
                 // User aborted from the overlay: nothing changes, and
                 // a pending area-click mode/cycles choice is dropped.
+                // A cancelled TAP/SWIPE replace restores the old step
+                // instead of leaving the point-less placeholder.
+                val pendingOld = replacePendingOld
+                val pendingIndex = replacePendingIndex
+                replacePendingOld = null
+                replacePendingIndex = -1
+                if (pendingOld != null && pendingIndex in steps.indices) {
+                    replaceStep(pendingIndex, pendingOld)
+                }
                 pickKind = null
                 pendingAreaMode = "RANDOM"
                 pendingAreaCycles = 1
@@ -164,6 +173,8 @@ class TaskEditorActivity : AppCompatActivity() {
                     PickKind.TAP_EDIT -> {
                         val old = steps.getOrNull(pickEditIndex)
                         if (old != null) replaceStep(pickEditIndex, old.copy(point = point))
+                        replacePendingOld = null
+                        replacePendingIndex = -1
                     }
                     else -> { /* A point cannot complete a swipe. */ }
                 }
@@ -187,6 +198,8 @@ class TaskEditorActivity : AppCompatActivity() {
                         if (old != null) {
                             replaceStep(pickEditIndex, old.copy(start = start, end = end))
                         }
+                        replacePendingOld = null
+                        replacePendingIndex = -1
                     }
                     else -> { /* A swipe cannot complete a tap. */ }
                 }
@@ -351,22 +364,11 @@ class TaskEditorActivity : AppCompatActivity() {
 
         adapter = StepAdapter(steps, object : StepAdapter.Listener {
             override fun onStepClicked(position: Int) = editStep(position)
-            override fun onCopyStep(position: Int) {
-                val step = steps.getOrNull(position) ?: return
-                steps.add(position + 1, step.copy(id = WorkflowStore.newId()))
-                adapter.notifyItemInserted(position + 1)
-            }
-            override fun onDeleteStep(position: Int) {
-                if (position !in steps.indices) return
-                steps.removeAt(position)
-                adapter.notifyItemRemoved(position)
-                if (position < steps.size) {
-                    adapter.notifyItemRangeChanged(position, steps.size - position)
-                }
-            }
-            override fun onPlayStep(position: Int) {
-                WorkflowRunner.runSingle(currentWorkflow(), position)
-            }
+            override fun onCopyStep(position: Int) = copyStep(position)
+            override fun onDeleteStep(position: Int) = deleteStep(position)
+            override fun onPlayStep(position: Int) = playStep(position)
+            override fun onStepMenu(position: Int, anchor: View) =
+                showStepMenu(position, anchor)
             override fun onWaitClicked(position: Int) = showWaitAfterDialog(position)
             override fun onStartDrag(holder: RecyclerView.ViewHolder) {
                 touchHelper?.startDrag(holder)
@@ -602,6 +604,167 @@ class TaskEditorActivity : AppCompatActivity() {
         steps[position] = step
         adapter.notifyItemChanged(position)
     }
+
+    // ---------- Step row actions (shared by the row quick icons and
+    // the explicit step action menu) ----------
+
+    private fun copyStep(position: Int) {
+        val step = steps.getOrNull(position) ?: return
+        steps.add(position + 1, step.copy(id = WorkflowStore.newId()))
+        adapter.notifyItemInserted(position + 1)
+    }
+
+    private fun deleteStep(position: Int) {
+        if (position !in steps.indices) return
+        steps.removeAt(position)
+        adapter.notifyItemRemoved(position)
+        if (position < steps.size) {
+            adapter.notifyItemRangeChanged(position, steps.size - position)
+        }
+    }
+
+    private fun playStep(position: Int) {
+        WorkflowRunner.runSingle(currentWorkflow(), position)
+    }
+
+    /** Explicit per-step action menu: Copy, Delete, Play, Edit, Replace.
+     * The row quick icons (copy / delete / play) stay exactly as they
+     * were; this menu only adds Edit and Replace alongside them. */
+    private fun showStepMenu(position: Int, anchor: View) {
+        if (position !in steps.indices) return
+        val popup = PopupMenu(this, anchor)
+        popup.menu.add(getString(R.string.step_menu_copy))
+        popup.menu.add(getString(R.string.step_menu_delete))
+        popup.menu.add(getString(R.string.step_menu_play))
+        popup.menu.add(getString(R.string.step_menu_edit))
+        popup.menu.add(getString(R.string.step_menu_replace))
+        popup.setOnMenuItemClickListener { item ->
+            when (item.title.toString()) {
+                getString(R.string.step_menu_copy) -> copyStep(position)
+                getString(R.string.step_menu_delete) -> deleteStep(position)
+                getString(R.string.step_menu_play) -> playStep(position)
+                getString(R.string.step_menu_edit) -> editStep(position)
+                getString(R.string.step_menu_replace) -> replaceStepWithType(position)
+            }
+            true
+        }
+        popup.show()
+    }
+
+    private fun replaceStepWithType(position: Int) {
+        if (position !in steps.indices) return
+        val sheet = AddStepBottomSheet()
+        // Recording produces several new steps, so it cannot replace
+        // one step: hide its row in this menu.
+        sheet.showRecordRow = false
+        sheet.onStepChosenListener =
+            AddStepBottomSheet.OnStepChosenListener { type -> doReplace(position, type) }
+        sheet.show(supportFragmentManager, "replace_step")
+    }
+
+    // A TAP/SWIPE replace whose point pick was cancelled: the old step
+    // is restored instead of leaving a point-less placeholder behind.
+    private var replacePendingIndex: Int = -1
+    private var replacePendingOld: Step? = null
+
+    private fun doReplace(position: Int, type: StepType) {
+        val old = steps.getOrNull(position) ?: return
+        if (type == old.type) {
+            Toast.makeText(this, R.string.step_menu_replace_same, Toast.LENGTH_SHORT).show()
+            editStep(position)
+            return
+        }
+        when (type) {
+            StepType.BUTTON_RECOGNITION, StepType.IMAGE_RECOGNITION,
+            StepType.COLOR_RECOGNITION, StepType.OCR_READ -> {
+                // The recognition launcher only replaces on RESULT_OK,
+                // so cancelling keeps the old step untouched.
+                launchRecognition(old, type, position)
+            }
+            StepType.TAP, StepType.SWIPE -> {
+                // Point/swipe picks update steps[position] in place, so
+                // the new-type placeholder must be in place first; a
+                // cancelled pick restores the old step (see
+                // applyOverlayResult). Without overlay permission the
+                // service helper shows its guide dialog and nothing is
+                // touched at all.
+                if (!android.provider.Settings.canDrawOverlays(this)) {
+                    pickKind = null
+                    if (type == StepType.SWIPE) launchSwipePick() else launchPick(
+                        getString(R.string.pick_on_screen)
+                    )
+                    return
+                }
+                replacePendingIndex = position
+                replacePendingOld = old
+                replaceStep(position, resetStep(old, type))
+                pickEditIndex = position
+                if (type == StepType.SWIPE) {
+                    pickKind = PickKind.SWIPE_EDIT
+                    launchSwipePick()
+                } else {
+                    pickKind = PickKind.TAP_EDIT
+                    launchPick(getString(R.string.pick_on_screen))
+                }
+            }
+            StepType.SCREENSHOT, StepType.VIBRATION, StepType.SOUND,
+            StepType.SCREEN_OFF, StepType.STOP_TASK -> {
+                // No editor: the replacement is complete as-is.
+                replaceStep(position, resetStep(old, type))
+            }
+            else -> {
+                // Every other type has a dialog taking (existing,
+                // position): passing the reset old step means OK
+                // replaces in place (position, wait-after and cycles
+                // preserved) while Cancel changes nothing.
+                val reset = resetStep(old, type)
+                when (type) {
+                    StepType.TYPE_TEXT -> showTypeTextDialog(reset, position)
+                    StepType.WAIT -> showWaitDurationDialog(reset, position)
+                    StepType.NAVIGATION -> showNavigationDialog(reset, position)
+                    StepType.LAUNCH_APP -> showLaunchAppDialog(reset, position)
+                    StepType.SUB_TASK -> showSubTaskDialog(reset, position)
+                    StepType.TYPE_CODE -> showSnippetPicker(reset, position)
+                    StepType.TYPE_EXCEL_ROW -> showMistakesPicker(reset, position)
+                    StepType.PASTE -> showPasteDialog(reset, position)
+                    StepType.AREA_CLICK -> showAreaClickDialog(reset, position)
+                    StepType.WAIT_RANDOM -> showWaitRandomDialog(reset, position)
+                    StepType.INTENT_URI -> showUriDialog(reset, position, false)
+                    StepType.NETWORK_GET -> showUriDialog(reset, position, true)
+                    StepType.SLIDE_LIST -> showSlideListDialog(reset, position)
+                    StepType.QS_TILE -> showQsTileDialog(reset, position)
+                    StepType.POWER_DIALOG -> showPowerDialogDialog(reset, position)
+                    else -> replaceStep(position, reset)
+                }
+            }
+        }
+    }
+
+    /** The old step with its position, wait-after and cycles kept, but
+     * every type-specific field reset to that type's default, so a
+     * replaced step never carries the old type's point, text, region
+     * or branch configuration into the new type. */
+    private fun resetStep(old: Step, type: StepType): Step = old.copy(
+        type = type,
+        point = null, start = null, end = null, durationMs = 0,
+        text = "", navKey = null, packageName = "", subWorkflowId = "",
+        snippetId = "", mistakeLevel = MistakeLevel.OFF,
+        matchText = "", matchMode = com.nimu.omeeeye.model.MatchMode.EXACT,
+        buttonId = "", buttonDesc = "", templatePath = "",
+        areaMode = com.nimu.omeeeye.model.AreaMode.FULLSCREEN,
+        regionLeft = -1, regionTop = -1, regionRight = -1, regionBottom = -1,
+        colorValue = 0, colorTolerance = 20, anchorX = -1, anchorY = -1,
+        ocrVariable = "OCR_TEXT",
+        successMode = com.nimu.omeeeye.model.SuccessMode.CLICK,
+        clickCount = 1, customSteps = emptyList(), clickFirst = false,
+        jumpTarget = -1, retryCount = 1, retryDelayMs = 3000,
+        retrySteps = emptyList(),
+        afterRetryMode = com.nimu.omeeeye.model.AfterRetryMode.IGNORE,
+        afterRetrySteps = emptyList(), afterRetryJumpTarget = -1,
+        waitMinMs = 0, waitMaxMs = 1000, intentUri = "", networkUrl = "",
+        dataSourceId = "", dataColumn = "", areaClickMode = "RANDOM",
+        slideDirection = "DOWN", slideCount = 1, qsTileLabel = ""
+    )
 
     // ---------- Add-step sheet ----------
 

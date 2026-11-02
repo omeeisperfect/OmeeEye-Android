@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Strings for the 7-item fix round (floating bar, add-menu icons,
+  record menu, button details, step action menu, OCR visibility).
+  All English only. New strings live here, never in strings.xml.
+-->
+<resources>
+    <string name="floating_bar_no_permission">Floating bar needs “Display over other apps”. Allow it in Settings, then tap Floating bar again.</string>
+    <string name="step_menu_title">Step actions</string>
+    <string name="step_menu_copy">Copy</string>
+    <string name="step_menu_delete">Delete</string>
+    <string name="step_menu_play">Play</string>
+    <string name="step_menu_edit">Edit</string>
+    <string name="step_menu_replace">Replace</string>
+    <string name="step_menu_replace_same">This step is already that type.</string>
+    <string name="record_menu_back">Back</string>
+    <string name="record_menu_home">Home</string>
+    <string name="record_menu_recent">Recent</string>
+    <string name="record_menu_wait">Wait</string>
+    <string name="record_menu_launch">Launch app</string>
+    <string name="record_menu_close_apps">Close</string>
+    <string name="rec_button_text_label">Button text</string>
+    <string name="rec_button_id_label">Button ID</string>
+    <string name="rec_button_desc_label">Button description</string>
+    <string name="rec_button_details_title">Captured button details</string>
+    <string name="rec_details_empty">—</string>
+    <string name="ocr_test_read">Test read</string>
+    <string name="ocr_test_no_region">Pick a region first, then test the read.</string>
+    <string name="ocr_test_no_service">Accessibility service is not running, so no screenshot can be taken.</string>
+    <string name="ocr_test_no_text">No text found in this region.</string>
+    <string name="ocr_test_detected">Detected text: “%1$s”</string>
+    <string name="ocr_test_no_shot">Screenshot unavailable: %1$s</string>
+    <string name="ocr_history_found">OCR text: “%1$s”</string>
+    <string name="ocr_history_no_text">OCR: no text found in region</string>
+    <string name="ocr_history_no_text_wanted">OCR: no text found in region (looking for “%1$s”)</string>
+</resources>

@@ -117,6 +117,7 @@ class HistoryActivity : AppCompatActivity() {
                         )
                         val line: TextView = row.findViewById(R.id.detail_line)
                         val error: TextView = row.findViewById(R.id.detail_error)
+                        val extra: TextView = row.findViewById(R.id.detail_extra)
                         // Step numbers are 1-based for display; the stored
                         // stepIndex is 0-based.
                         line.text = holder.itemView.context.getString(
@@ -133,6 +134,14 @@ class HistoryActivity : AppCompatActivity() {
                             error.visibility = View.VISIBLE
                         } else {
                             error.visibility = View.GONE
+                        }
+                        // OCR result line (fix round, item 6): what the
+                        // step actually read, or why it found nothing.
+                        if (log.detail.isNotBlank()) {
+                            extra.text = log.detail
+                            extra.visibility = View.VISIBLE
+                        } else {
+                            extra.visibility = View.GONE
                         }
                         holder.stepLogsContainer.addView(row)
                     }

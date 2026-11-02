@@ -146,8 +146,15 @@ class FloatingService : Service() {
 
     private fun showIdle(id: String) {
         removeRunningView()
-        if (idleView != null) return
-        if (!Settings.canDrawOverlays(this)) return
+        // A bar left over from another workflow used to block a new one:
+        // the old bar stayed bound to the old workflow's actions. Drop
+        // it and build fresh for this workflow instead.
+        removeIdleView()
+        if (!Settings.canDrawOverlays(this)) {
+            // Never fail silently: say exactly why no bar appears.
+            Toast.makeText(this, R.string.floating_bar_no_permission, Toast.LENGTH_LONG).show()
+            return
+        }
         val view = LayoutInflater.from(this).inflate(R.layout.floating_idle, null)
         view.findViewById<View>(R.id.btn_configure).setOnClickListener {
             openEditor(id, pickTarget = false)

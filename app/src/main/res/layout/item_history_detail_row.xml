@@ -23,4 +23,13 @@
         android:textColor="@color/danger"
         android:textSize="13sp"
         android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/detail_extra"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:textColor="@color/text_secondary"
+        android:textSize="13sp"
+        android:visibility="gone" />
 </LinearLayout>

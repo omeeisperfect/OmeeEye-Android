@@ -34,6 +34,11 @@ class AddStepBottomSheet : BottomSheetDialogFragment() {
 
     var onStepChosenListener: OnStepChosenListener? = null
     var onRecordRequested: (() -> Unit)? = null
+    /** Replace mode hides the Record row: recording produces several
+     * new steps, so it cannot replace one step. Default true keeps
+     * every existing caller (main editor, recognition sub-actions)
+     * exactly as before. */
+    var showRecordRow: Boolean = true
 
     private data class Row(
         val iconRes: Int,
@@ -51,37 +56,37 @@ class AddStepBottomSheet : BottomSheetDialogFragment() {
             R.string.group_basic,
             listOf(
                 Row(
-                    android.R.drawable.ic_menu_mylocation,
+                    R.drawable.ic_step_tap,
                     R.string.step_tap, R.string.step_tap_desc,
                     StepType.TAP, false
                 ),
                 Row(
-                    android.R.drawable.ic_menu_directions,
+                    R.drawable.ic_step_swipe,
                     R.string.step_swipe, R.string.step_swipe_desc,
                     StepType.SWIPE, false
                 ),
                 Row(
-                    android.R.drawable.ic_menu_edit,
+                    R.drawable.ic_step_typetext,
                     R.string.step_type_text, R.string.step_type_text_desc,
                     StepType.TYPE_TEXT, false
                 ),
                 Row(
-                    android.R.drawable.ic_menu_recent_history,
+                    R.drawable.ic_step_wait,
                     R.string.step_wait, R.string.step_wait_desc,
                     StepType.WAIT, false
                 ),
                 Row(
-                    android.R.drawable.ic_media_play,
+                    R.drawable.ic_step_record,
                     R.string.step_record, R.string.step_record_desc,
                     null, true
                 ),
                 Row(
-                    android.R.drawable.ic_menu_revert,
+                    R.drawable.ic_step_nav,
                     R.string.step_navigation, R.string.step_navigation_desc,
                     StepType.NAVIGATION, false
                 ),
                 Row(
-                    android.R.drawable.ic_menu_send,
+                    R.drawable.ic_step_launch,
                     R.string.step_launch_app, R.string.step_launch_app_desc,
                     StepType.LAUNCH_APP, false
                 )
@@ -91,7 +96,7 @@ class AddStepBottomSheet : BottomSheetDialogFragment() {
             R.string.group_sub_task,
             listOf(
                 Row(
-                    android.R.drawable.ic_menu_agenda,
+                    R.drawable.ic_step_subtask,
                     R.string.step_sub_task, R.string.step_sub_task_desc,
                     StepType.SUB_TASK, false
                 )
@@ -101,22 +106,22 @@ class AddStepBottomSheet : BottomSheetDialogFragment() {
             R.string.group_recognition,
             listOf(
                 Row(
-                    android.R.drawable.ic_menu_view,
+                    R.drawable.ic_step_button,
                     R.string.step_button_recognition, R.string.step_button_recognition_desc,
                     StepType.BUTTON_RECOGNITION, false
                 ),
                 Row(
-                    android.R.drawable.ic_menu_gallery,
+                    R.drawable.ic_step_image,
                     R.string.step_image_recognition, R.string.step_image_recognition_desc,
                     StepType.IMAGE_RECOGNITION, false
                 ),
                 Row(
-                    android.R.drawable.ic_menu_crop,
+                    R.drawable.ic_step_color,
                     R.string.step_color_recognition, R.string.step_color_recognition_desc,
                     StepType.COLOR_RECOGNITION, false
                 ),
                 Row(
-                    android.R.drawable.ic_menu_search,
+                    R.drawable.ic_step_ocr,
                     R.string.step_ocr_read, R.string.step_ocr_read_desc,
                     StepType.OCR_READ, false
                 )
@@ -126,12 +131,12 @@ class AddStepBottomSheet : BottomSheetDialogFragment() {
             R.string.group_code_data,
             listOf(
                 Row(
-                    android.R.drawable.ic_menu_save,
+                    R.drawable.ic_step_code,
                     R.string.step_type_code, R.string.step_type_code_desc,
                     StepType.TYPE_CODE, false
                 ),
                 Row(
-                    android.R.drawable.ic_menu_month,
+                    R.drawable.ic_step_excel,
                     R.string.step_type_excel_row, R.string.step_type_excel_row_desc,
                     StepType.TYPE_EXCEL_ROW, false
                 )
@@ -141,67 +146,67 @@ class AddStepBottomSheet : BottomSheetDialogFragment() {
             R.string.group_advanced,
             listOf(
                 Row(
-                    android.R.drawable.ic_menu_camera,
+                    R.drawable.ic_step_screenshot,
                     R.string.step_screenshot, R.string.step_screenshot_desc,
                     StepType.SCREENSHOT, false
                 ),
                 Row(
-                    android.R.drawable.ic_menu_upload,
+                    R.drawable.ic_step_paste,
                     R.string.step_paste, R.string.step_paste_desc,
                     StepType.PASTE, false
                 ),
                 Row(
-                    android.R.drawable.ic_menu_call,
+                    R.drawable.ic_step_vibration,
                     R.string.step_vibration, R.string.step_vibration_desc,
                     StepType.VIBRATION, false
                 ),
                 Row(
-                    android.R.drawable.ic_media_play,
+                    R.drawable.ic_step_sound,
                     R.string.step_sound, R.string.step_sound_desc,
                     StepType.SOUND, false
                 ),
                 Row(
-                    android.R.drawable.ic_menu_day,
+                    R.drawable.ic_step_screenoff,
                     R.string.step_screen_off, R.string.step_screen_off_desc,
                     StepType.SCREEN_OFF, false
                 ),
                 Row(
-                    android.R.drawable.ic_menu_zoom,
+                    R.drawable.ic_step_area,
                     R.string.step_area_click, R.string.step_area_click_desc,
                     StepType.AREA_CLICK, false
                 ),
                 Row(
-                    android.R.drawable.ic_menu_rotate,
+                    R.drawable.ic_step_waitrandom,
                     R.string.step_wait_random, R.string.step_wait_random_desc,
                     StepType.WAIT_RANDOM, false
                 ),
                 Row(
-                    android.R.drawable.ic_menu_close_clear_cancel,
+                    R.drawable.ic_step_stop,
                     R.string.step_stop_task, R.string.step_stop_task_desc,
                     StepType.STOP_TASK, false
                 ),
                 Row(
-                    android.R.drawable.ic_menu_share,
+                    R.drawable.ic_step_intent,
                     R.string.step_intent_uri, R.string.step_intent_uri_desc,
                     StepType.INTENT_URI, false
                 ),
                 Row(
-                    android.R.drawable.ic_menu_compass,
+                    R.drawable.ic_step_network,
                     R.string.step_network_get, R.string.step_network_get_desc,
                     StepType.NETWORK_GET, false
                 ),
                 Row(
-                    android.R.drawable.ic_menu_sort_by_size,
+                    R.drawable.ic_step_slide,
                     R.string.step_slide_list, R.string.step_slide_list_desc,
                     StepType.SLIDE_LIST, false
                 ),
                 Row(
-                    android.R.drawable.ic_menu_preferences,
+                    R.drawable.ic_step_qs,
                     R.string.step_qs_tile, R.string.step_qs_tile_desc,
                     StepType.QS_TILE, false
                 ),
                 Row(
-                    android.R.drawable.ic_lock_power_off,
+                    R.drawable.ic_step_power,
                     R.string.step_power_dialog, R.string.step_power_dialog_desc,
                     StepType.POWER_DIALOG, false
                 )
@@ -218,7 +223,7 @@ class AddStepBottomSheet : BottomSheetDialogFragment() {
 
         val list = view.findViewById<RecyclerView>(R.id.add_step_list)
         list.layoutManager = LinearLayoutManager(requireContext())
-        list.adapter = AddStepAdapter(sections) { row ->
+        list.adapter = AddStepAdapter(sections, showRecordRow) { row ->
             if (row.isRecord) {
                 onRecordRequested?.invoke()
             } else {
@@ -241,6 +246,7 @@ class AddStepBottomSheet : BottomSheetDialogFragment() {
 
     private class AddStepAdapter(
         sections: List<Section>,
+        private val showRecordRow: Boolean,
         private val onRowClicked: (Row) -> Unit
     ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
@@ -251,8 +257,11 @@ class AddStepBottomSheet : BottomSheetDialogFragment() {
 
         private val items: List<ListItem> = buildList {
             sections.forEach { section ->
+                val rows = if (showRecordRow) section.rows
+                    else section.rows.filter { !it.isRecord }
+                if (rows.isEmpty()) return@forEach
                 add(ListItem.Group(section.titleRes))
-                section.rows.forEach { row -> add(ListItem.StepRow(row)) }
+                rows.forEach { row -> add(ListItem.StepRow(row)) }
             }
         }
 

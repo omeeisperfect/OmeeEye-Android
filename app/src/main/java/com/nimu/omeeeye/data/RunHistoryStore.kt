@@ -27,13 +27,16 @@ object RunHistoryStore {
         val error: String = ""
     )
 
-    /** One executed step inside a run record. */
+    /** One executed step inside a run record. [detail] is an extra
+     * human-readable result line (today: the OCR text a step read, or
+     * why it found nothing). Old records load it as blank. */
     data class StepLog(
         val stepIndex: Int,
         val label: String,
         val durationMs: Long,
         val status: String,
-        val error: String = ""
+        val error: String = "",
+        val detail: String = ""
     )
 
     private fun file(context: Context): File = File(context.filesDir, FILE_NAME)
@@ -91,6 +94,7 @@ object RunHistoryStore {
                                     put("durationMs", s.durationMs)
                                     put("status", s.status)
                                     put("error", s.error)
+                                    put("detail", s.detail)
                                 }
                             )
                         }
@@ -123,7 +127,8 @@ object RunHistoryStore {
                                     label = s.optString("label", ""),
                                     durationMs = s.optLong("durationMs", 0),
                                     status = s.optString("status", ""),
-                                    error = s.optString("error", "")
+                                    error = s.optString("error", ""),
+                                    detail = s.optString("detail", "")
                                 )
                             )
                         } catch (e: Exception) {

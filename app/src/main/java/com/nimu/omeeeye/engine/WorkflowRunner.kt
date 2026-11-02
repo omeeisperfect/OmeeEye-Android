@@ -143,6 +143,11 @@ object WorkflowRunner {
     // tests never advance it, so they always read the first row.
     private var currentIterationOrdinal: Int = 0
     private val stepLogs = mutableListOf<RunHistoryStore.StepLog>()
+    // OCR result line for the step currently executing (fix round,
+    // item 6): what the last OCR attempt read, or why it found
+    // nothing. Reset before every step so a stale value can never
+    // leak into another step's history line.
+    private var lastOcrDetail: String = ""
 
     fun init(context: Context) {
         appContext = context.applicationContext
@@ -321,6 +326,7 @@ object WorkflowRunner {
                 postStepChanged(index, workflow.steps.size, step)
                 postTick()
                 val stepStart = SystemClock.elapsedRealtime()
+                lastOcrDetail = ""
                 // Per-step cycles: the step runs stepCycles times in
                 // sequence (clamped 1..99; 1 = today's behaviour).
                 // Pause/stop are honoured between repeats via
@@ -430,6 +436,7 @@ object WorkflowRunner {
         postStepChanged(stepIndex, totalSteps, step)
         postTick()
         val stepStart = SystemClock.elapsedRealtime()
+        lastOcrDetail = ""
         when (val result = executeStep(step, stepIndex, listOf(workflow.id), 0)) {
             is StepResult.Success, is StepResult.Jump -> {
                 logStep(stepIndex, step, SystemClock.elapsedRealtime() - stepStart, "OK", "")
@@ -1076,6 +1083,34 @@ object WorkflowRunner {
                         } else {
                             text.contains(wanted, ignoreCase = true)
                         }
+                        // History line (fix round, item 6): never store
+                        // OCR silently. Found shows the read text;
+                        // not-found says so explicitly, with the wanted
+                        // text when one was set. The crop path itself
+                        // was checked: the screenshot bitmap is full
+                        // resolution and the region is absolute screen
+                        // pixels, so no scaling/offset error hides here.
+                        // (stringOr cannot pass format args, so these
+                        // lines format with getString directly.)
+                        lastOcrDetail = try {
+                            when {
+                                text.isNotEmpty() && found -> appContext?.getString(
+                                    R.string.ocr_history_found, text.take(100)
+                                ) ?: "OCR text: “${text.take(100)}”"
+                                wanted.isNotEmpty() -> appContext?.getString(
+                                    R.string.ocr_history_no_text_wanted, wanted
+                                ) ?: "OCR: no text found in region (looking for “$wanted”)"
+                                else -> appContext?.getString(
+                                    R.string.ocr_history_no_text
+                                ) ?: "OCR: no text found in region"
+                            }
+                        } catch (e: Exception) {
+                            if (text.isNotEmpty() && found) {
+                                "OCR text: “${text.take(100)}”"
+                            } else {
+                                "OCR: no text found in region"
+                            }
+                        }
                         if (found) {
                             runVariables[step.ocrVariable.ifBlank { "OCR_TEXT" }] = text
                             val point = result.bounds?.let {
@@ -1345,7 +1380,10 @@ object WorkflowRunner {
         }
         val label = if (detail.isBlank()) step.type.name else "${step.type.name}: $detail"
         stepLogs.add(
-            RunHistoryStore.StepLog(index, label, durationMs, status, error)
+            RunHistoryStore.StepLog(
+                index, label, durationMs, status, error,
+                detail = if (step.type == StepType.OCR_READ) lastOcrDetail else ""
+            )
         )
     }
 

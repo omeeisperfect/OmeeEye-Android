@@ -24,6 +24,7 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -31,6 +32,7 @@ import androidx.core.content.ContextCompat
 import com.nimu.omeeeye.R
 import com.nimu.omeeeye.data.WorkflowStore
 import com.nimu.omeeeye.engine.AutomationService
+import com.nimu.omeeeye.model.NavKey
 import com.nimu.omeeeye.model.Point
 import com.nimu.omeeeye.model.Step
 import com.nimu.omeeeye.model.StepType
@@ -179,6 +181,7 @@ class OverlayPickService : Service() {
     private lateinit var windowManager: WindowManager
     private var rootView: View? = null
     private var drawView: PickDrawView? = null
+    private var appPickerPanel: View? = null
     private var hintView: TextView? = null
     private var countView: TextView? = null
     private var confirmButton: Button? = null
@@ -275,12 +278,13 @@ class OverlayPickService : Service() {
             FrameLayout.LayoutParams.MATCH_PARENT
         ))
 
-        // Top control bar: hint + (record count) + (swipe confirm) +
-        // (record stop) + cancel. The bar consumes its own touches, so
-        // taps on it never become picks.
+        // Top control bar. In record mode it has TWO rows: row 1 = hint
+        // + (record count) + (swipe confirm) + (record stop) + cancel;
+        // row 2 = the record menu (Back / Home / Recent / Wait /
+        // Launch app). Other modes keep a single row. The bar consumes
+        // its own touches, so taps on it never become picks.
         val bar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+            orientation = LinearLayout.VERTICAL
             // Clickable so taps on the bar itself never fall through to
             // the draw view below and become accidental picks.
             isClickable = true
@@ -291,6 +295,16 @@ class OverlayPickService : Service() {
                 FrameLayout.LayoutParams.WRAP_CONTENT
             ).apply { gravity = Gravity.TOP }
         }
+        val row1 = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            isClickable = true
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+        bar.addView(row1)
         hintView = TextView(this).apply {
             text = when (mode) {
                 MODE_SWIPE -> getString(R.string.pick_start_hint)
@@ -306,7 +320,7 @@ class OverlayPickService : Service() {
             textSize = 15f
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        bar.addView(hintView)
+        row1.addView(hintView)
 
         countView = TextView(this).apply {
             text = getString(R.string.overlay_record_count, 0)
@@ -315,27 +329,66 @@ class OverlayPickService : Service() {
             visibility = if (mode == MODE_RECORD) View.VISIBLE else View.GONE
             setPadding(pad, 0, pad, 0)
         }
-        bar.addView(countView)
+        row1.addView(countView)
 
         confirmButton = Button(this).apply {
             text = getString(R.string.overlay_pick_confirm)
             visibility = View.GONE
             setOnClickListener { finishSwipe() }
         }
-        bar.addView(confirmButton)
+        row1.addView(confirmButton)
 
         if (mode == MODE_RECORD) {
             val stop = Button(this).apply {
                 text = getString(R.string.overlay_record_stop)
                 setOnClickListener { finishRecord() }
             }
-            bar.addView(stop)
+            row1.addView(stop)
         }
         val cancel = Button(this).apply {
             text = getString(R.string.cancel)
             setOnClickListener { finishCancelled() }
         }
-        bar.addView(cancel)
+        row1.addView(cancel)
+        if (mode == MODE_RECORD) {
+            // Record menu: tapping a button records that action as a
+            // step (in order, with the taps/swipes around it). These
+            // buttons sit in the overlay bar, so they never reach the
+            // app underneath as real key presses.
+            val menuRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                isClickable = true
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            }
+            fun menuButton(label: String, onClick: () -> Unit): Button =
+                Button(this).apply {
+                    text = label
+                    layoutParams = LinearLayout.LayoutParams(
+                        0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                    )
+                    setOnClickListener { onClick() }
+                }
+            menuRow.addView(menuButton(getString(R.string.record_menu_back)) {
+                recordNav(NavKey.BACK)
+            })
+            menuRow.addView(menuButton(getString(R.string.record_menu_home)) {
+                recordNav(NavKey.HOME)
+            })
+            menuRow.addView(menuButton(getString(R.string.record_menu_recent)) {
+                recordNav(NavKey.RECENTS)
+            })
+            menuRow.addView(menuButton(getString(R.string.record_menu_wait)) {
+                recordWait()
+            })
+            menuRow.addView(menuButton(getString(R.string.record_menu_launch)) {
+                toggleAppPicker()
+            })
+            bar.addView(menuRow)
+        }
         root.addView(bar)
 
         drawView?.setOnTouchListener { _, event ->
@@ -413,12 +466,23 @@ class OverlayPickService : Service() {
                                 lastY = event.rawY
                                 val d = hypot(lastX - downX, lastY - downY)
                                 if (d > maxDistancePx) maxDistancePx = d
+                                // Live swipe path: a line from the touch
+                                // down point to the current finger point,
+                                // so a swipe is visible WHILE it happens
+                                // (before, only its two end dots showed).
+                                drawView?.setPath(
+                                    listOf(
+                                        Point(downX.toInt(), downY.toInt()),
+                                        Point(lastX.toInt(), lastY.toInt())
+                                    )
+                                )
                             }
                             true
                         }
                         MotionEvent.ACTION_UP -> {
                             if (tracking) {
                                 tracking = false
+                                drawView?.clearPath()
                                 val durationMs = event.eventTime - downTimeMs
                                 val upX = event.rawX.toInt()
                                 val upY = event.rawY.toInt()
@@ -459,6 +523,7 @@ class OverlayPickService : Service() {
                         }
                         MotionEvent.ACTION_CANCEL -> {
                             tracking = false
+                            drawView?.clearPath()
                             true
                         }
                         else -> false
@@ -659,6 +724,97 @@ class OverlayPickService : Service() {
         finishWith(json)
     }
 
+    // ---------- Record menu actions (MODE_RECORD only) ----------
+
+    private fun refreshRecordCount() {
+        countView?.text = getString(R.string.overlay_record_count, recorded.size)
+    }
+
+    private fun recordNav(key: NavKey) {
+        recorded.add(
+            Step(
+                id = WorkflowStore.newId(),
+                type = StepType.NAVIGATION,
+                navKey = key,
+                waitAfterMs = DEFAULT_WAIT_AFTER_MS
+            )
+        )
+        refreshRecordCount()
+    }
+
+    private fun recordWait() {
+        // A recorded Wait is a plain WAIT step (2000 ms default, the
+        // same as every recorded step's wait-after); the user can
+        // change it in the editor afterwards.
+        recorded.add(
+            Step(
+                id = WorkflowStore.newId(),
+                type = StepType.WAIT,
+                durationMs = DEFAULT_WAIT_AFTER_MS,
+                waitAfterMs = DEFAULT_WAIT_AFTER_MS
+            )
+        )
+        refreshRecordCount()
+    }
+
+    private fun toggleAppPicker() {
+        val existing = appPickerPanel
+        if (existing != null) {
+            existing.visibility =
+                if (existing.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+            return
+        }
+        val root = rootView as? FrameLayout ?: return
+        val list = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        list.addView(Button(this).apply {
+            text = getString(R.string.record_menu_close_apps)
+            setOnClickListener { appPickerPanel?.visibility = View.GONE }
+        })
+        val pm = packageManager
+        val main = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val apps = try {
+            pm.queryIntentActivities(main, 0)
+        } catch (e: Exception) {
+            emptyList()
+        }.sortedBy { it.loadLabel(pm).toString().lowercase() }
+        if (apps.isEmpty()) {
+            list.addView(TextView(this).apply {
+                text = getString(R.string.no_apps_found)
+            })
+        }
+        for (info in apps) {
+            val label = info.loadLabel(pm).toString()
+            val pkg = info.activityInfo.packageName
+            list.addView(Button(this).apply {
+                text = label
+                setOnClickListener {
+                    recorded.add(
+                        Step(
+                            id = WorkflowStore.newId(),
+                            type = StepType.LAUNCH_APP,
+                            packageName = pkg,
+                            waitAfterMs = DEFAULT_WAIT_AFTER_MS
+                        )
+                    )
+                    refreshRecordCount()
+                    appPickerPanel?.visibility = View.GONE
+                }
+            })
+        }
+        val panel = ScrollView(this).apply {
+            setBackgroundColor(ContextCompat.getColor(context, R.color.overlay_bar))
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                (resources.displayMetrics.heightPixels * 0.6).toInt()
+            ).apply { gravity = Gravity.TOP }
+            addView(list)
+        }
+        appPickerPanel = panel
+        root.addView(panel)
+    }
+
     private fun finishRecord() {
         val arr = JSONArray()
         recorded.forEach { arr.put(WorkflowStore.stepToJson(it)) }
@@ -725,6 +881,7 @@ class OverlayPickService : Service() {
         hintView = null
         countView = null
         confirmButton = null
+        appPickerPanel = null
     }
 
     private fun overlayParams(): WindowManager.LayoutParams {
@@ -781,10 +938,12 @@ class OverlayPickService : Service() {
             .build()
     }
 
-    /** Draws the drag rectangle and the pick/record dots, nothing else. */
+    /** Draws the drag rectangle, the pick/record dots, and the live
+     * swipe path while a swipe is being dragged, nothing else. */
     private inner class PickDrawView(context: Context) : View(context) {
         private var rect: Rect? = null
         private var dots: List<Point> = emptyList()
+        private var path: List<Point> = emptyList()
         private val fillPaint = Paint().apply {
             color = ContextCompat.getColor(context, R.color.accent)
             alpha = 60
@@ -822,12 +981,31 @@ class OverlayPickService : Service() {
             invalidate()
         }
 
+        fun setPath(value: List<Point>) {
+            path = value
+            invalidate()
+        }
+
+        fun clearPath() {
+            path = emptyList()
+            invalidate()
+        }
+
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
             val r = rect
             if (r != null) {
                 canvas.drawRect(r.left.toFloat(), r.top.toFloat(), r.right.toFloat(), r.bottom.toFloat(), fillPaint)
                 canvas.drawRect(r.left.toFloat(), r.top.toFloat(), r.right.toFloat(), r.bottom.toFloat(), strokePaint)
+            }
+            if (path.size >= 2) {
+                for (i in 0 until path.size - 1) {
+                    canvas.drawLine(
+                        path[i].x.toFloat(), path[i].y.toFloat(),
+                        path[i + 1].x.toFloat(), path[i + 1].y.toFloat(),
+                        strokePaint
+                    )
+                }
             }
             val radius = 14 * resources.displayMetrics.density
             for (dot in dots) {
