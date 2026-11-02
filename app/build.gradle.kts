@@ -66,5 +66,5 @@ dependencies {
     // OCR only (feature 9): on-device ML Kit text recognition. No other
     // new dependency was added for this build; image/color matching and
     // XLSX reading use only the Android framework.
-    implementation("com.google.mlkit:text-recognition:2.0.0")
+    implementation("com.google.mlkit:text-recognition:16.0.1")
 }
