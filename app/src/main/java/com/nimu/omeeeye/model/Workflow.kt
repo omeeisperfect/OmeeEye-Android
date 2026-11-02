@@ -48,7 +48,13 @@ enum class StepType {
     WAIT_RANDOM,
     STOP_TASK,
     INTENT_URI,
-    NETWORK_GET
+    NETWORK_GET,
+    // Missing-core layer: list slide, Quick Settings tile tap, and the
+    // power dialog. The runner dispatches all three; their editors are
+    // added separately by later builders.
+    SLIDE_LIST,
+    QS_TILE,
+    POWER_DIALOG
 }
 
 enum class NavKey {
@@ -196,7 +202,33 @@ data class Step(
     // "TEXT" for TXT files). "" = first data column. Only meaningful
     // when dataSourceId is non-blank (and, for TYPE_TEXT with blank
     // text, it is the column whose value gets typed).
-    val dataColumn: String = ""
+    val dataColumn: String = "",
+    // ---- Per-step repeat (missing-core layer) ----
+    // How many times THIS step runs in sequence in a full run
+    // (clamped 1..99 by the runner; 1 = today's behaviour). A
+    // single-step test always runs once, regardless of this value.
+    val stepCycles: Int = 1,
+    // ---- AREA_CLICK mode ----
+    // "RANDOM" (default: today's single random tap in the region) or
+    // "ALL" (grid of taps across the region). Any other value behaves
+    // as "RANDOM", so old steps are unchanged.
+    val areaClickMode: String = "RANDOM",
+    // ---- SLIDE_LIST ----
+    // "DOWN" (scroll forward) or "UP" (scroll backward). Any other
+    // value scrolls forward.
+    val slideDirection: String = "DOWN",
+    // Slide repetitions (clamped 1..20 by the service).
+    val slideCount: Int = 1,
+    // ---- QS_TILE ----
+    // Display label of the Quick Settings tile, chosen from a list by
+    // the later editor — never typed coordinates. "" = no tile chosen.
+    val qsTileLabel: String = "",
+    // ---- COLOR_RECOGNITION anchor ----
+    // Point whose live pixel is watched instead of the region search
+    // (see the runner's COLOR branch). -1 = no anchor: the old
+    // region-centre behaviour runs unchanged.
+    val anchorX: Int = -1,
+    val anchorY: Int = -1
 ) {
     /** The picked region, or null when none was picked. */
     fun region(): Rect? =

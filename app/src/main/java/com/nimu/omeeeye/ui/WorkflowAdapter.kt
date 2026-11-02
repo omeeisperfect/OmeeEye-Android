@@ -23,6 +23,14 @@ class WorkflowAdapter(private val listener: Listener) :
         fun onDelete(workflow: Workflow)
         fun onFloatingBar(workflow: Workflow)
         fun onPlay(workflow: Workflow)
+        // Home card menu additions (items 1, 2, 4, 5, 6). Edit details
+        // reuses the existing Edit path (onEdit opens the editor, where
+        // the name is edited); the rest are new MainActivity handlers.
+        fun onEditDetails(workflow: Workflow)
+        fun onShare(workflow: Workflow)
+        fun onShortcut(workflow: Workflow)
+        fun onTimed(workflow: Workflow)
+        fun onGesturePath(workflow: Workflow)
     }
 
     companion object {
@@ -30,6 +38,11 @@ class WorkflowAdapter(private val listener: Listener) :
         private const val MENU_DUPLICATE = 2
         private const val MENU_DELETE = 3
         private const val MENU_FLOATING_BAR = 4
+        private const val MENU_EDIT_DETAILS = 5
+        private const val MENU_SHARE = 6
+        private const val MENU_SHORTCUT = 7
+        private const val MENU_TIMED = 8
+        private const val MENU_GESTURE_PATH = 9
     }
 
     private var items: List<Workflow> = emptyList()
@@ -67,18 +80,45 @@ class WorkflowAdapter(private val listener: Listener) :
 
         holder.btnCardMenu.setOnClickListener { view ->
             val popup = PopupMenu(view.context, view)
-            popup.menu.add(0, MENU_EDIT, 0, R.string.card_menu_edit)
+            popup.menu.add(0, MENU_EDIT_DETAILS, 0, R.string.card_menu_edit_details)
             popup.menu.add(0, MENU_DUPLICATE, 1, R.string.card_menu_duplicate)
-            popup.menu.add(0, MENU_DELETE, 2, R.string.card_menu_delete)
-            popup.menu.add(0, MENU_FLOATING_BAR, 3, R.string.card_menu_floating_bar)
+            popup.menu.add(0, MENU_SHARE, 2, R.string.card_menu_share)
+            popup.menu.add(0, MENU_SHORTCUT, 3, R.string.card_menu_shortcut)
+            popup.menu.add(0, MENU_TIMED, 4, R.string.card_menu_timed)
+            popup.menu.add(0, MENU_GESTURE_PATH, 5, R.string.card_menu_gesture_path)
+            // Existing items, kept in place: Edit and Floating bar
+            // still work exactly as before.
+            popup.menu.add(0, MENU_EDIT, 6, R.string.card_menu_edit)
+            popup.menu.add(0, MENU_FLOATING_BAR, 7, R.string.card_menu_floating_bar)
+            popup.menu.add(0, MENU_DELETE, 8, R.string.card_menu_delete)
             popup.setOnMenuItemClickListener { item ->
                 when (item.itemId) {
+                    MENU_EDIT_DETAILS -> {
+                        listener.onEditDetails(workflow)
+                        true
+                    }
                     MENU_EDIT -> {
                         listener.onEdit(workflow)
                         true
                     }
                     MENU_DUPLICATE -> {
                         listener.onDuplicate(workflow)
+                        true
+                    }
+                    MENU_SHARE -> {
+                        listener.onShare(workflow)
+                        true
+                    }
+                    MENU_SHORTCUT -> {
+                        listener.onShortcut(workflow)
+                        true
+                    }
+                    MENU_TIMED -> {
+                        listener.onTimed(workflow)
+                        true
+                    }
+                    MENU_GESTURE_PATH -> {
+                        listener.onGesturePath(workflow)
                         true
                     }
                     MENU_DELETE -> {

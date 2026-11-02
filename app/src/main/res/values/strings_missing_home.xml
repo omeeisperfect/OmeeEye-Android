@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Home card menu (items 1, 2, 4, 5, 6). All English only. -->
+    <string name="card_menu_edit_details">Edit details</string>
+    <string name="card_menu_share">Share</string>
+    <string name="card_menu_shortcut">Shortcut</string>
+    <string name="card_menu_timed">Timed execution</string>
+    <string name="card_menu_gesture_path">Show gesture path</string>
+
+    <!-- Home-screen shortcut (item 2). -->
+    <string name="shortcut_created">Home shortcut request sent. If it does not appear, your launcher may not allow pinned shortcuts.</string>
+    <string name="shortcut_not_supported">Pinned shortcuts are not supported on this device.</string>
+    <string name="shortcut_not_found">That workflow no longer exists, so the shortcut did nothing.</string>
+
+    <!-- Timed execution (item 4). -->
+    <string name="timed_title">Timed execution</string>
+    <string name="timed_note">Time triggers may fire late when exact alarms are unavailable on this device.</string>
+    <string name="timed_set">Timed execution set for %1$s.</string>
+
+    <!-- Share task (item 5). -->
+    <string name="share_task_title">Share task</string>
+    <string name="share_task_failed">Sharing failed.</string>
+
+    <!-- Button capture (item 3). -->
+    <string name="btn_capture_from_screen">Capture from screen</string>
+    <string name="button_capture_title">Capture button</string>
+    <string name="button_capture_hint">Tap an outlined button to capture it.</string>
+    <string name="button_capture_show_more">Show more</string>
+    <string name="button_capture_show_less">Show less</string>
+    <string name="button_capture_no_service">Button capture needs the accessibility service turned on.</string>
+    <string name="button_capture_none_found">No clickable buttons found on this screen.</string>
+    <string name="button_capture_captured">Button captured.</string>
+
+    <!-- Gesture path (item 6). -->
+    <string name="gesture_path_title">Gesture path</string>
+    <string name="gesture_path_close">Close</string>
+    <string name="gesture_path_empty">This workflow has no tap, swipe or area steps to show.</string>
+
+    <!-- Floating panel chooser (item 7). -->
+    <string name="floating_panel_title">Floating panel</string>
+    <string name="floating_panel_desc">Choose which functions the floating panel shows. Close, Expand, Stop and More always stay visible, so a run can always be stopped and Settings always reached.</string>
+    <string name="floating_fn_configure">Configure</string>
+    <string name="floating_fn_play">Play</string>
+    <string name="floating_fn_target">Target picker</string>
+    <string name="floating_fn_expand">Expand</string>
+    <string name="floating_fn_stop">Stop</string>
+    <string name="floating_fn_pause">Pause</string>
+    <string name="floating_fn_back">Back</string>
+    <string name="floating_fn_home">Home</string>
+    <string name="floating_fn_recents">Recents</string>
+    <string name="floating_fn_more">More</string>
+
+    <!-- Screenshot preview (item 8). -->
+    <string name="screenshot_preview_title">Screenshot</string>
+    <string name="screenshot_preview_share">Share</string>
+    <string name="screenshot_preview_scroll">Scroll (long screenshot)</string>
+    <string name="screenshot_preview_close">Close</string>
+    <string name="screenshot_preview_missing">Screenshot file not found.</string>
+    <string name="screenshot_preview_long_unavailable">Long screenshot is not available on this device</string>
+    <string name="screenshot_preview_stitched">Long screenshot ready.</string>
+    <string name="screenshot_preview_share_title">Share screenshot</string>
+</resources>

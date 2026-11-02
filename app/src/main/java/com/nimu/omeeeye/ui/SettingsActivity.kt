@@ -7,6 +7,8 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Button
+import android.widget.CheckBox
+import android.widget.LinearLayout
 import android.widget.RadioGroup
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -69,6 +71,79 @@ class SettingsActivity : AppCompatActivity() {
             )
             startActivity(intent)
         }
+
+        addFloatingPanelSection()
+    }
+
+    /**
+     * Floating panel chooser (item 7), added programmatically (no
+     * layout-file change): one checkbox per function FloatingService
+     * offers, in panel order. Choices persist in FloatingPanelPrefs
+     * and apply the next time the panel is shown. Close, Expand, Stop
+     * and More have checkboxes too, but FloatingService keeps those
+     * four visible regardless, so unchecking everything can never
+     * strand the user without a way back.
+     */
+    private fun addFloatingPanelSection() {
+        val form = findViewById<TextView>(R.id.title_text).parent as LinearLayout
+        val density = resources.displayMetrics.density
+        val pad = (16 * density).toInt()
+        val section = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundResource(R.drawable.row_card)
+            elevation = 4 * density
+            setPadding(pad, pad, pad, pad)
+            val params = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            params.topMargin = (24 * density).toInt()
+            layoutParams = params
+        }
+        section.addView(
+            TextView(this).apply {
+                text = getString(R.string.floating_panel_title)
+                setTextColor(resources.getColor(R.color.text_primary, theme))
+                textSize = 17f
+                setTypeface(null, android.graphics.Typeface.BOLD)
+            }
+        )
+        section.addView(
+            TextView(this).apply {
+                text = getString(R.string.floating_panel_desc)
+                setTextColor(resources.getColor(R.color.text_secondary, theme))
+                textSize = 14f
+                val smallPad = (4 * density).toInt()
+                setPadding(0, smallPad, 0, smallPad)
+            }
+        )
+        val labels = mapOf(
+            FloatingPanelPrefs.FN_CONFIGURE to R.string.floating_fn_configure,
+            FloatingPanelPrefs.FN_PLAY to R.string.floating_fn_play,
+            FloatingPanelPrefs.FN_TARGET to R.string.floating_fn_target,
+            FloatingPanelPrefs.FN_EXPAND to R.string.floating_fn_expand,
+            FloatingPanelPrefs.FN_STOP to R.string.floating_fn_stop,
+            FloatingPanelPrefs.FN_PAUSE to R.string.floating_fn_pause,
+            FloatingPanelPrefs.FN_BACK to R.string.floating_fn_back,
+            FloatingPanelPrefs.FN_HOME to R.string.floating_fn_home,
+            FloatingPanelPrefs.FN_RECENTS to R.string.floating_fn_recents,
+            FloatingPanelPrefs.FN_MORE to R.string.floating_fn_more
+        )
+        for (fn in FloatingPanelPrefs.ALL) {
+            val labelRes = labels[fn] ?: continue
+            val box = CheckBox(this).apply {
+                text = getString(labelRes)
+                setTextColor(resources.getColor(R.color.text_primary, theme))
+                buttonTintList = resources.getColorStateList(R.color.accent, theme)
+                textSize = 15f
+                isChecked = FloatingPanelPrefs.isEnabled(this@SettingsActivity, fn)
+            }
+            box.setOnCheckedChangeListener { _, checked ->
+                FloatingPanelPrefs.setEnabled(this, fn, checked)
+            }
+            section.addView(box)
+        }
+        form.addView(section)
     }
 
     override fun onResume() {

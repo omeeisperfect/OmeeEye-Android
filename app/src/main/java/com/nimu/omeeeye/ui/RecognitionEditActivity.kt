@@ -2,11 +2,15 @@ package com.nimu.omeeeye.ui
 
 import android.content.Intent
 import android.graphics.BitmapFactory
+import android.os.Build
 import android.os.Bundle
 import android.text.InputType
 import android.view.LayoutInflater
 import android.view.View
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -15,14 +19,20 @@ import android.widget.RadioGroup
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import com.nimu.omeeeye.R
+import com.nimu.omeeeye.data.CodeLibraryStore
+import com.nimu.omeeeye.data.DataFileStore
+import com.nimu.omeeeye.data.DataSourceLoader
 import com.nimu.omeeeye.data.WorkflowStore
+import com.nimu.omeeeye.engine.AutomationService
 import com.nimu.omeeeye.model.AfterRetryMode
 import com.nimu.omeeeye.model.AreaMode
 import com.nimu.omeeeye.model.MatchMode
 import com.nimu.omeeeye.model.MistakeLevel
+import com.nimu.omeeeye.model.NavKey
 import com.nimu.omeeeye.model.Point
 import com.nimu.omeeeye.model.Step
 import com.nimu.omeeeye.model.StepType
@@ -69,6 +79,9 @@ class RecognitionEditActivity : AppCompatActivity() {
     companion object {
         private const val WAIT_AFTER_MS = 2000L
         private const val MAX_PICKER_100MS = 300 // 300 x 100 ms = 30,000 ms
+        // Existing SharedPreferences file (same one ThemePrefs uses).
+        private const val PREFS_NAME = "omeeeye_prefs"
+        private const val KEY_ANCHOR_GUIDE_DISMISSED = "color_anchor_guide_dismissed"
     }
 
     // ---- Step being edited ----
@@ -93,6 +106,12 @@ class RecognitionEditActivity : AppCompatActivity() {
     private var templatePath: String = ""
     private var colorValue: Int = 0
     private var colorPicked: Boolean = false
+    // Color anchor (item 6): -1 = no anchor, old region behaviour.
+    private var anchorX: Int = -1
+    private var anchorY: Int = -1
+    private val anchorPicked: Boolean
+        get() = anchorX >= 0 && anchorY >= 0
+    private var stepCycles: Int = 1
     private var successMode: SuccessMode = SuccessMode.CLICK
     private var jumpTarget: Int = -1
     private var afterRetryMode: AfterRetryMode = AfterRetryMode.IGNORE
@@ -148,16 +167,52 @@ class RecognitionEditActivity : AppCompatActivity() {
     private lateinit var afterJumpGroup: View
     private lateinit var textAfterJumpStatus: TextView
     private lateinit var btnSave: Button
+    // Programmatic sections (no layout-file change): cycles picker
+    // inserted before the Save / Close row, anchor controls appended
+    // to the Color group.
+    private lateinit var pickerCycles: NumberPicker
+    private lateinit var btnPickAnchor: Button
+    private lateinit var textAnchorStatus: TextView
 
     // ---- Overlay pick state ----
     // Which on-screen pick is in flight for the overlay:
     // "area" (the section-1 region), "search" (image search region),
-    // "ocr" (OCR region), "template", "color".
+    // "ocr" (OCR region), "template", "color", "subArea" (an
+    // AREA_CLICK sub-action's region).
     private var pendingRegionKind: String? = null
     // Which sub-action list an overlay tap belongs to:
     // "success", "retry" or "after".
     private var pendingSubList: String? = null
+    // Index being re-picked inside that list, or -1 = appending.
+    private var pendingSubEditIndex: Int = -1
+    // Sub-action swipe / area choices, held while the overlay pick
+    // is in flight (the step is built when the pick returns).
+    private var pendingSubSwipeDurationMs: Long = 500L
+    private var pendingSubAreaMode: String = "RANDOM"
+    private var pendingSubRecord: Boolean = false
+    // Color-anchor point pick in flight (separate from sub-actions).
+    private var pendingAnchorPick: Boolean = false
     private var overlayRequestId: String? = null
+    // Nested-recognition editor result target (sub-action list + index).
+    private var subRecogListKey: String? = null
+    private var subRecogEditIndex: Int = -1
+    private val subRecogLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            val listKey = subRecogListKey
+            subRecogListKey = null
+            val editIndex = subRecogEditIndex
+            subRecogEditIndex = -1
+            if (listKey == null) return@registerForActivityResult
+            if (result.resultCode != RESULT_OK) return@registerForActivityResult
+            val json = result.data?.getStringExtra("step_json")
+                ?: return@registerForActivityResult
+            try {
+                putSubAction(listKey, WorkflowStore.stepFromJson(JSONObject(json)), editIndex)
+            } catch (e: Exception) {
+                Toast.makeText(this, "Recognition step could not be loaded", Toast.LENGTH_SHORT)
+                    .show()
+            }
+        }
     // A pick the user asked for but the overlay permission blocked:
     // the request is kept (not dropped) so that returning from system
     // settings with the permission granted resumes it automatically
@@ -166,6 +221,25 @@ class RecognitionEditActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // Button capture (item 3): a capture stored by
+        // ButtonCaptureService fills the identification fields and is
+        // consumed (cleared) here. Only non-empty parts overwrite:
+        // an id/description-only capture must not wipe typed text.
+        // Null = no capture (cancel / failure) -> nothing changes.
+        val captured = ButtonCaptureStore.take()
+        if (captured != null && stepType == StepType.BUTTON_RECOGNITION &&
+            ::editButtonText.isInitialized
+        ) {
+            if (captured.text.isNotEmpty()) {
+                editButtonText.setText(captured.text)
+            }
+            if (captured.viewId.isNotEmpty()) {
+                editButtonId.setText(captured.viewId)
+            }
+            if (captured.description.isNotEmpty()) {
+                editButtonDesc.setText(captured.description)
+            }
+        }
         // Resume a permission-blocked pick the moment the grant exists.
         // This must run before the early returns below: on the blocked
         // path no result was ever stored, so take() would return null
@@ -176,10 +250,14 @@ class RecognitionEditActivity : AppCompatActivity() {
             pickAwaitingPermission = false
             val kind = pendingRegionKind
             val subList = pendingSubList
-            if (kind != null) {
+            if (pendingAnchorPick) {
+                launchAnchorPick()
+            } else if (pendingSubRecord && subList != null) {
+                launchSubRecord(subList)
+            } else if (kind != null) {
                 launchPickRegion(kind)
             } else if (subList != null) {
-                launchSubPointPick(subList)
+                launchSubPointPick(subList, pendingSubEditIndex)
             }
         }
         val requestId = overlayRequestId ?: return
@@ -198,6 +276,9 @@ class RecognitionEditActivity : AppCompatActivity() {
         outState.putString("pendingRegionKind", pendingRegionKind)
         outState.putString("pendingSubList", pendingSubList)
         outState.putBoolean("pickAwaitingPermission", pickAwaitingPermission)
+        outState.putBoolean("pendingAnchorPick", pendingAnchorPick)
+        outState.putInt("pendingSubEditIndex", pendingSubEditIndex)
+        outState.putBoolean("pendingSubRecord", pendingSubRecord)
     }
 
     /** Applies one overlay result (region or point pick). */
@@ -210,9 +291,34 @@ class RecognitionEditActivity : AppCompatActivity() {
         if (obj.optString("kind") == OverlayPickStore.CANCELLED_KIND) {
             pendingRegionKind = null
             pendingSubList = null
+            pendingAnchorPick = false
+            pendingSubRecord = false
+            pendingSubEditIndex = -1
             return
         }
         when (obj.optString("kind")) {
+            "record" -> {
+                val listKey = pendingSubList
+                pendingSubList = null
+                pendingSubRecord = false
+                if (listKey == null) return
+                val stepsJson = obj.optString("steps_json")
+                if (stepsJson.isBlank()) return
+                try {
+                    val arr = JSONArray(stepsJson)
+                    val list = subActionList(listKey)
+                    for (i in 0 until arr.length()) {
+                        list.add(WorkflowStore.stepFromJson(arr.getJSONObject(i)))
+                    }
+                    renderSubLists()
+                } catch (e: Exception) {
+                    Toast.makeText(
+                        this,
+                        "Recorded steps could not be loaded",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
             "region" -> {
                 val kind = pendingRegionKind
                 pendingRegionKind = null
@@ -221,12 +327,51 @@ class RecognitionEditActivity : AppCompatActivity() {
                 val top = obj.optInt("top", -1)
                 val right = obj.optInt("right", -1)
                 val bottom = obj.optInt("bottom", -1)
+                if (kind == "subArea") {
+                    // AREA_CLICK sub-action region: mode was chosen in
+                    // its dialog before the pick.
+                    val listKey = pendingSubList
+                    pendingSubList = null
+                    if (listKey == null) return
+                    if (left < 0 || top < 0 || right <= left || bottom <= top) return
+                    val editIndex = pendingSubEditIndex
+                    pendingSubEditIndex = -1
+                    val old = subActionList(listKey).getOrNull(editIndex)
+                    val built = (old ?: Step(
+                        id = WorkflowStore.newId(),
+                        type = StepType.AREA_CLICK,
+                        waitAfterMs = WAIT_AFTER_MS
+                    )).copy(
+                        type = StepType.AREA_CLICK,
+                        regionLeft = left, regionTop = top,
+                        regionRight = right, regionBottom = bottom,
+                        areaClickMode = pendingSubAreaMode
+                    )
+                    putSubAction(listKey, built, editIndex)
+                    refreshSaveEnabled()
+                    return
+                }
                 when (kind) {
                     "template" -> {
                         val path = obj.optString("templatePath", "")
                         if (path.isNotBlank()) {
-                            templatePath = path
-                            refreshTemplateViews()
+                            // Preview BEFORE storing: the capture file
+                            // already exists on disk (the overlay saved
+                            // it), but it only becomes this step's
+                            // template when the user taps Save.
+                            val bitmap = try {
+                                BitmapFactory.decodeFile(
+                                    File(filesDir, path).absolutePath
+                                )
+                            } catch (e: Exception) {
+                                null
+                            }
+                            if (bitmap != null) {
+                                showTemplatePreviewDialog(path, bitmap)
+                            } else {
+                                templatePath = path
+                                refreshTemplateViews()
+                            }
                         }
                     }
                     "color" -> {
@@ -252,17 +397,46 @@ class RecognitionEditActivity : AppCompatActivity() {
                 refreshSaveEnabled()
             }
             "point" -> {
+                val point = Point(obj.optInt("x"), obj.optInt("y"))
+                if (pendingAnchorPick) {
+                    pendingAnchorPick = false
+                    handleAnchorPoint(point)
+                    return
+                }
                 val listKey = pendingSubList
                 pendingSubList = null
                 if (listKey == null) return
-                val point = Point(obj.optInt("x"), obj.optInt("y"))
-                val step = Step(
+                val editIndex = pendingSubEditIndex
+                pendingSubEditIndex = -1
+                val old = subActionList(listKey).getOrNull(editIndex)
+                val step = (old ?: Step(
                     id = WorkflowStore.newId(),
                     type = StepType.TAP,
-                    point = point,
                     waitAfterMs = WAIT_AFTER_MS
+                )).copy(type = StepType.TAP, point = point)
+                putSubAction(listKey, step, editIndex)
+            }
+            "swipe" -> {
+                // Swipe sub-action: duration was chosen in its dialog
+                // before the pick.
+                val listKey = pendingSubList
+                pendingSubList = null
+                if (listKey == null) return
+                val editIndex = pendingSubEditIndex
+                pendingSubEditIndex = -1
+                val start = Point(obj.optInt("startX"), obj.optInt("startY"))
+                val end = Point(obj.optInt("endX"), obj.optInt("endY"))
+                val old = subActionList(listKey).getOrNull(editIndex)
+                val step = (old ?: Step(
+                    id = WorkflowStore.newId(),
+                    type = StepType.SWIPE,
+                    waitAfterMs = WAIT_AFTER_MS
+                )).copy(
+                    type = StepType.SWIPE,
+                    start = start, end = end,
+                    durationMs = pendingSubSwipeDurationMs
                 )
-                addSubAction(listKey, step)
+                putSubAction(listKey, step, editIndex)
             }
         }
     }
@@ -282,10 +456,17 @@ class RecognitionEditActivity : AppCompatActivity() {
             pendingSubList = savedInstanceState.getString("pendingSubList")
             pickAwaitingPermission =
                 savedInstanceState.getBoolean("pickAwaitingPermission", false)
+            pendingAnchorPick =
+                savedInstanceState.getBoolean("pendingAnchorPick", false)
+            pendingSubEditIndex =
+                savedInstanceState.getInt("pendingSubEditIndex", -1)
+            pendingSubRecord =
+                savedInstanceState.getBoolean("pendingSubRecord", false)
         }
 
         loadInputs()
         bindViews()
+        addProgrammaticSections()
         applyStepTypeVisibility()
         loadStateIntoViews()
         wireButtons()
@@ -337,9 +518,14 @@ class RecognitionEditActivity : AppCompatActivity() {
         regionBottom = originalStep.regionBottom
         templatePath = originalStep.templatePath
         colorValue = originalStep.colorValue
+        anchorX = originalStep.anchorX
+        anchorY = originalStep.anchorY
+        stepCycles = originalStep.stepCycles
         // A color step that already has a picked region was picked
-        // on screen before; treat its area as picked.
-        colorPicked = stepType == StepType.COLOR_RECOGNITION && hasRegion
+        // on screen before; treat its area as picked. A stored anchor
+        // counts as picked too (it carries its own color).
+        colorPicked = stepType == StepType.COLOR_RECOGNITION &&
+            (hasRegion || anchorPicked)
         successMode = originalStep.successMode
         jumpTarget = originalStep.jumpTarget
         afterRetryMode = originalStep.afterRetryMode
@@ -400,6 +586,68 @@ class RecognitionEditActivity : AppCompatActivity() {
         btnSave = findViewById(R.id.btn_rec_save)
     }
 
+    /**
+     * Programmatic UI that would otherwise need layout edits: a Cycles
+     * picker section before the Save / Close row (all four recognition
+     * types), and "Pick anchor point" + anchor status inside the Color
+     * group. The layout file itself is untouched.
+     */
+    private fun addProgrammaticSections() {
+        val bottomRow = btnSave.parent as View
+        val form = bottomRow.parent as LinearLayout
+        val section = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = (16 * resources.displayMetrics.density).toInt()
+            setPadding(pad, pad, pad, pad)
+        }
+        section.addView(
+            TextView(this).apply {
+                text = getString(R.string.rec_cycles_title)
+            }
+        )
+        pickerCycles = NumberPicker(this).apply {
+            minValue = 1
+            maxValue = 99
+            value = stepCycles.coerceIn(1, 99)
+        }
+        section.addView(pickerCycles)
+        form.addView(section, form.indexOfChild(bottomRow))
+
+        val colorGroup = findViewById<LinearLayout>(R.id.group_color)
+        btnPickAnchor = Button(this).apply {
+            text = getString(R.string.color_anchor_pick)
+        }
+        textAnchorStatus = TextView(this).apply {
+            text = getString(R.string.color_anchor_none)
+            val pad = (4 * resources.displayMetrics.density).toInt()
+            setPadding(0, pad, 0, 0)
+        }
+        colorGroup.addView(btnPickAnchor)
+        colorGroup.addView(textAnchorStatus)
+
+        // Button capture (item 3, Button steps only): opens the
+        // on-screen capture overlay; the result returns via
+        // ButtonCaptureStore and is consumed in onResume().
+        if (stepType == StepType.BUTTON_RECOGNITION) {
+            val buttonGroup = findViewById<LinearLayout>(R.id.group_button)
+            buttonGroup.addView(
+                Button(this).apply {
+                    text = getString(R.string.btn_capture_from_screen)
+                    setOnClickListener { launchButtonCapture() }
+                }
+            )
+        }
+    }
+
+    private fun refreshAnchorViews() {
+        if (!::textAnchorStatus.isInitialized) return
+        textAnchorStatus.text = if (anchorPicked) {
+            getString(R.string.color_anchor_picked, anchorX, anchorY)
+        } else {
+            getString(R.string.color_anchor_none)
+        }
+    }
+
     /** Shows only the identification group for this step type. */
     private fun applyStepTypeVisibility() {
         val titleView = findViewById<TextView>(R.id.rec_title)
@@ -438,6 +686,10 @@ class RecognitionEditActivity : AppCompatActivity() {
         editOcrVariable.setText(
             originalStep.ocrVariable.ifBlank { "OCR_TEXT" }
         )
+
+        pickerCycles.minValue = 1
+        pickerCycles.maxValue = 99
+        pickerCycles.value = stepCycles.coerceIn(1, 99)
 
         pickerClickCount.minValue = 1
         pickerClickCount.maxValue = 10
@@ -511,17 +763,20 @@ class RecognitionEditActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btn_pick_color).setOnClickListener {
             launchPickRegion("color")
         }
+        btnPickAnchor.setOnClickListener {
+            maybeShowAnchorGuideThenPick()
+        }
         findViewById<Button>(R.id.btn_pick_ocr_region).setOnClickListener {
             launchPickRegion("ocr")
         }
         findViewById<Button>(R.id.btn_add_success_action).setOnClickListener {
-            showAddSubActionDialog("success")
+            openSubActionSheet("success")
         }
         findViewById<Button>(R.id.btn_add_retry_action).setOnClickListener {
-            showAddSubActionDialog("retry")
+            openSubActionSheet("retry")
         }
         findViewById<Button>(R.id.btn_add_after_action).setOnClickListener {
-            showAddSubActionDialog("after")
+            openSubActionSheet("after")
         }
         findViewById<Button>(R.id.btn_success_jump_target).setOnClickListener {
             showJumpDialog(isAfterRetry = false)
@@ -545,6 +800,7 @@ class RecognitionEditActivity : AppCompatActivity() {
         refreshRegionStatuses()
         refreshTemplateViews()
         refreshColorViews()
+        refreshAnchorViews()
         refreshSuccessVisibility()
         refreshAfterVisibility()
         refreshJumpStatuses()
@@ -725,8 +981,9 @@ class RecognitionEditActivity : AppCompatActivity() {
     }
 
     /** Sub-action Tap pick (shared by the auto-resume in onResume). */
-    private fun launchSubPointPick(listKey: String) {
+    private fun launchSubPointPick(listKey: String, editIndex: Int = -1) {
         pendingSubList = listKey
+        pendingSubEditIndex = editIndex
         val requestId = WorkflowStore.newId()
         overlayRequestId = requestId
         if (!OverlayPickService.startPoint(
@@ -738,6 +995,197 @@ class RecognitionEditActivity : AppCompatActivity() {
         } else {
             pickAwaitingPermission = false
         }
+    }
+
+    /** Sub-action Swipe pick (duration chosen in its dialog first). */
+    private fun launchSubSwipePick(listKey: String, editIndex: Int, durationMs: Long) {
+        pendingSubList = listKey
+        pendingSubEditIndex = editIndex
+        pendingSubSwipeDurationMs = durationMs
+        val requestId = WorkflowStore.newId()
+        overlayRequestId = requestId
+        if (!OverlayPickService.startSwipe(
+                this, requestId, RecognitionEditActivity::class.java.name
+            )
+        ) {
+            pickAwaitingPermission = true
+        } else {
+            pickAwaitingPermission = false
+        }
+    }
+
+    /** Sub-action AREA_CLICK region pick (mode chosen first). */
+    private fun launchSubAreaPick(listKey: String, editIndex: Int, mode: String) {
+        pendingSubList = listKey
+        pendingSubEditIndex = editIndex
+        pendingSubAreaMode = mode
+        pendingRegionKind = "subArea"
+        val requestId = WorkflowStore.newId()
+        overlayRequestId = requestId
+        if (!OverlayPickService.startRegion(
+                this, requestId, "region", RecognitionEditActivity::class.java.name
+            )
+        ) {
+            pickAwaitingPermission = true
+        } else {
+            pickAwaitingPermission = false
+        }
+    }
+
+    /** Record-gesture row of the sub-action ADD menu: recorded steps append. */
+    private fun launchSubRecord(listKey: String) {
+        pendingSubList = listKey
+        pendingSubRecord = true
+        val requestId = WorkflowStore.newId()
+        overlayRequestId = requestId
+        if (!OverlayPickService.startRecord(
+                this, requestId, RecognitionEditActivity::class.java.name
+            )
+        ) {
+            pickAwaitingPermission = true
+        } else {
+            pickAwaitingPermission = false
+        }
+    }
+
+    // ---------- Color anchor ----------
+
+    /**
+     * One-time "How to set up" guide, shown on the first anchor pick
+     * unless "Never show again" was checked (persisted in the existing
+     * SharedPreferences file). Cancel stops without picking anything;
+     * Save starts the on-screen pick.
+     */
+    private fun maybeShowAnchorGuideThenPick() {
+        val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_ANCHOR_GUIDE_DISMISSED, false)) {
+            launchAnchorPick()
+            return
+        }
+        val density = resources.displayMetrics.density
+        val pad = (16 * density).toInt()
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, pad)
+        }
+        layout.addView(
+            TextView(this).apply {
+                text = getString(R.string.color_anchor_guide_message)
+            }
+        )
+        val neverAgain = CheckBox(this).apply {
+            text = getString(R.string.color_anchor_never_show)
+        }
+        layout.addView(neverAgain)
+        fun persistChoice() {
+            if (neverAgain.isChecked) {
+                prefs.edit().putBoolean(KEY_ANCHOR_GUIDE_DISMISSED, true).apply()
+            }
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.color_anchor_guide_title)
+            .setView(layout)
+            .setPositiveButton(R.string.rec_template_save) { _, _ ->
+                persistChoice()
+                launchAnchorPick()
+            }
+            .setNegativeButton(R.string.cancel) { _, _ ->
+                persistChoice()
+            }
+            .show()
+    }
+
+    /** Overlay point pick for the color anchor (not a sub-action). */
+    private fun launchAnchorPick() {
+        pendingAnchorPick = true
+        val requestId = WorkflowStore.newId()
+        overlayRequestId = requestId
+        if (!OverlayPickService.startPoint(
+                this, requestId, getString(R.string.pick_hint),
+                RecognitionEditActivity::class.java.name
+            )
+        ) {
+            pickAwaitingPermission = true
+        } else {
+            pickAwaitingPermission = false
+        }
+    }
+
+    /**
+     * Button capture (item 3): overlay over the real screen showing
+     * every clickable button outlined in red. False = overlay
+     * permission missing: the guide dialog is already shown by the
+     * service launcher and nothing is captured. The captured button
+     * (if any) arrives via ButtonCaptureStore in onResume(); this
+     * method keeps no pending state of its own.
+     */
+    private fun launchButtonCapture() {
+        ButtonCaptureService.startCapture(
+            this, RecognitionEditActivity::class.java.name
+        )
+    }
+
+    /**
+     * Anchor point returned: read the live pixel via the accessibility
+     * service and store the point + ARGB. Nothing is stored when the
+     * service is unavailable or the pixel cannot be read — the step
+     * must never pretend an anchor exists that was never measured.
+     */
+    private fun handleAnchorPoint(point: Point) {
+        val service = AutomationService.instance
+        if (service == null) {
+            Toast.makeText(
+                this, R.string.color_anchor_service_missing, Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+        val argb = service.pickColorAt(point)
+        if (argb == null) {
+            Toast.makeText(
+                this, R.string.color_anchor_failed, Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+        anchorX = point.x
+        anchorY = point.y
+        colorValue = argb
+        colorPicked = true
+        refreshColorViews()
+        refreshAnchorViews()
+        refreshSaveEnabled()
+    }
+
+    // ---------- Image template preview ----------
+
+    /**
+     * Preview shown AFTER capture and BEFORE storing: Save makes the
+     * capture this step's template; Discard deletes the temporary
+     * capture file and keeps the previous template untouched.
+     */
+    private fun showTemplatePreviewDialog(
+        path: String,
+        bitmap: android.graphics.Bitmap
+    ) {
+        val preview = ImageView(this).apply {
+            setImageBitmap(bitmap)
+            adjustViewBounds = true
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.rec_template_preview_title)
+            .setView(preview)
+            .setPositiveButton(R.string.rec_template_save) { _, _ ->
+                templatePath = path
+                refreshTemplateViews()
+                refreshSaveEnabled()
+            }
+            .setNegativeButton(R.string.rec_template_discard) { _, _ ->
+                try {
+                    File(filesDir, path).delete()
+                } catch (e: Exception) {
+                    // Best-effort cleanup; the old template is untouched.
+                }
+            }
+            .show()
     }
 
     // ---------- Dialogs ----------
@@ -826,6 +1274,21 @@ class RecognitionEditActivity : AppCompatActivity() {
         renderSubLists()
     }
 
+    /**
+     * Replace at [index] when editing an existing sub-action, else
+     * append. Every sub-action dialog and overlay return goes through
+     * here, so a cancelled configuration adds nothing.
+     */
+    private fun putSubAction(listKey: String, step: Step, index: Int) {
+        val list = subActionList(listKey)
+        if (index in list.indices) {
+            list[index] = step
+        } else {
+            list.add(step)
+        }
+        renderSubLists()
+    }
+
     private fun renderSubLists() {
         renderSubList(listSuccessActions, textSuccessEmpty, successActions, "success")
         renderSubList(listRetryActions, textRetryEmpty, retryActions, "retry")
@@ -845,6 +1308,12 @@ class RecognitionEditActivity : AppCompatActivity() {
             val row = inflater.inflate(R.layout.item_sub_action_row, container, false)
             row.findViewById<TextView>(R.id.sub_action_title).text =
                 subActionSummary(step)
+            // Tapping a row reopens its configuration dialog.
+            row.setOnClickListener {
+                if (index in list.indices) {
+                    editSubAction(listKey, index)
+                }
+            }
             row.findViewById<Button>(R.id.sub_action_delete).setOnClickListener {
                 if (index in list.indices) {
                     list.removeAt(index)
@@ -867,20 +1336,688 @@ class RecognitionEditActivity : AppCompatActivity() {
         else -> displayName(step.type)
     }
 
-    private fun showAddSubActionDialog(listKey: String) {
-        val labels = arrayOf(
-            getString(R.string.rec_action_tap),
-            getString(R.string.rec_action_type_text),
-            getString(R.string.rec_action_wait)
-        )
-        AlertDialog.Builder(this)
-            .setTitle(R.string.rec_add_action_title)
-            .setItems(labels) { _, which ->
-                when (which) {
-                    0 -> launchSubPointPick(listKey)
-                    1 -> showTypeTextSubDialog(listKey)
-                    else -> showWaitSubDialog(listKey)
+    /**
+     * Custom-action ADD: the SAME full grouped AddStepBottomSheet as
+     * the main editor — all groups, all step types, including nested
+     * recognition steps — not the old Tap/Type text/Wait-only menu.
+     * The runner's depth guard (top level + 2 nested levels, then
+     * "Recognition nesting too deep") prevents infinite nesting.
+     * Sub-action dialogs deliberately offer NO cycles picker: the
+     * runner repeats only top-level steps, so a cycles value stored
+     * on a sub-action would never run and would be fake UI.
+     */
+    private fun openSubActionSheet(listKey: String) {
+        val sheet = AddStepBottomSheet()
+        sheet.onStepChosenListener =
+            AddStepBottomSheet.OnStepChosenListener { type ->
+                showSubActionConfig(type, listKey, null, -1)
+            }
+        sheet.onRecordRequested = { launchSubRecord(listKey) }
+        sheet.show(supportFragmentManager, "add_sub_action")
+    }
+
+    /** Row tap: reopen that sub-action's configuration dialog. */
+    private fun editSubAction(listKey: String, index: Int) {
+        val step = subActionList(listKey).getOrNull(index) ?: return
+        if (step.type == StepType.TAP) {
+            launchSubPointPick(listKey, index)
+        } else {
+            showSubActionConfig(step.type, listKey, step, index)
+        }
+    }
+
+    /**
+     * Generic sub-action configuration dialog, covering every type.
+     * Point/region picks go through the overlay (never typed);
+     * no-config types are added immediately; cancelling any dialog
+     * adds nothing (the caller only puts the step on OK / pick return).
+     */
+    private fun showSubActionConfig(
+        type: StepType,
+        listKey: String,
+        existing: Step?,
+        index: Int
+    ) {
+        when (type) {
+            StepType.TAP -> launchSubPointPick(listKey, index)
+            StepType.SWIPE -> showSubSwipeDialog(listKey, existing, index)
+            StepType.TYPE_TEXT -> showTypeTextSubDialog(listKey, existing, index)
+            StepType.WAIT -> showWaitSubDialog(listKey, existing, index)
+            StepType.NAVIGATION -> showSubNavDialog(listKey, existing, index)
+            StepType.LAUNCH_APP -> showSubLaunchAppDialog(listKey, existing, index)
+            StepType.SUB_TASK -> showSubTaskDialog(listKey, existing, index)
+            StepType.TYPE_CODE -> showSubSnippetDialog(listKey, existing, index)
+            StepType.TYPE_EXCEL_ROW -> showSubMistakesDialog(listKey, existing, index)
+            StepType.BUTTON_RECOGNITION,
+            StepType.IMAGE_RECOGNITION,
+            StepType.COLOR_RECOGNITION,
+            StepType.OCR_READ -> launchSubRecognition(type, listKey, existing, index)
+            StepType.PASTE -> showSubPasteDialog(listKey, existing, index)
+            StepType.AREA_CLICK -> showSubAreaDialog(listKey, existing, index)
+            StepType.WAIT_RANDOM -> showSubWaitRandomDialog(listKey, existing, index)
+            StepType.INTENT_URI -> showSubUriDialog(listKey, existing, index, false)
+            StepType.NETWORK_GET -> showSubUriDialog(listKey, existing, index, true)
+            StepType.SLIDE_LIST -> showSubSlideDialog(listKey, existing, index)
+            StepType.QS_TILE -> showSubQsDialog(listKey, existing, index)
+            StepType.SCREENSHOT,
+            StepType.VIBRATION,
+            StepType.SOUND,
+            StepType.SCREEN_OFF,
+            StepType.STOP_TASK,
+            StepType.POWER_DIALOG -> {
+                if (existing == null) {
+                    putSubAction(
+                        listKey,
+                        Step(
+                            id = WorkflowStore.newId(),
+                            type = type,
+                            waitAfterMs = WAIT_AFTER_MS
+                        ),
+                        index
+                    )
+                } else {
+                    Toast.makeText(
+                        this, R.string.step_no_settings, Toast.LENGTH_SHORT
+                    ).show()
                 }
+            }
+        }
+    }
+
+    /** Nested recognition editor for a sub-action (full editor, same activity). */
+    private fun launchSubRecognition(
+        type: StepType,
+        listKey: String,
+        existing: Step?,
+        index: Int
+    ) {
+        subRecogListKey = listKey
+        subRecogEditIndex = index
+        val intent = Intent(this, RecognitionEditActivity::class.java)
+        intent.putExtra("step_type", type.name)
+        if (existing != null) {
+            intent.putExtra("step_json", WorkflowStore.stepToJson(existing).toString())
+        }
+        // No jump targets inside a sub-action list (the runner ignores
+        // jumps there), so the nested editor gets an empty list and its
+        // Jump modes stay safely unusable.
+        intent.putExtra("workflow_steps_json", "[]")
+        subRecogLauncher.launch(intent)
+    }
+
+    private fun showSubSwipeDialog(listKey: String, existing: Step?, index: Int) {
+        val picker = NumberPicker(this).apply {
+            minValue = 0
+            maxValue = MAX_PICKER_100MS
+            value = ((existing?.durationMs ?: 500L) / 100).toInt()
+                .coerceIn(0, MAX_PICKER_100MS)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.rec_type_swipe)
+            .setView(picker)
+            .setPositiveButton(R.string.ok) { _, _ ->
+                launchSubSwipePick(listKey, index, picker.value * 100L)
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun showSubNavDialog(listKey: String, existing: Step?, index: Int) {
+        val labels = arrayOf(
+            getString(R.string.nav_back),
+            getString(R.string.nav_home),
+            getString(R.string.nav_recents)
+        )
+        var selected = when (existing?.navKey) {
+            NavKey.BACK -> 0
+            NavKey.HOME -> 1
+            NavKey.RECENTS -> 2
+            null -> -1
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.rec_type_navigation)
+            .setSingleChoiceItems(labels, selected) { _, which -> selected = which }
+            .setPositiveButton(R.string.ok) { _, _ ->
+                if (selected < 0) return@setPositiveButton
+                val navKey = when (selected) {
+                    0 -> NavKey.BACK
+                    1 -> NavKey.HOME
+                    else -> NavKey.RECENTS
+                }
+                val old = subActionList(listKey).getOrNull(index)
+                putSubAction(
+                    listKey,
+                    (old ?: Step(
+                        id = WorkflowStore.newId(),
+                        type = StepType.NAVIGATION,
+                        waitAfterMs = WAIT_AFTER_MS
+                    )).copy(type = StepType.NAVIGATION, navKey = navKey),
+                    index
+                )
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun showSubLaunchAppDialog(listKey: String, existing: Step?, index: Int) {
+        val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val apps = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.queryIntentActivities(
+                launchIntent,
+                android.content.pm.PackageManager.ResolveInfoFlags.of(0)
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.queryIntentActivities(launchIntent, 0)
+        }.sortedBy { it.loadLabel(packageManager).toString().lowercase() }
+        if (apps.isEmpty()) {
+            Toast.makeText(this, R.string.no_apps_found, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val labels = apps.map { it.loadLabel(packageManager).toString() }.toTypedArray()
+        var selected = apps.indexOfFirst {
+            it.activityInfo?.packageName == existing?.packageName
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.choose_app)
+            .setSingleChoiceItems(labels, selected) { _, which -> selected = which }
+            .setPositiveButton(R.string.ok) { _, _ ->
+                if (selected < 0) return@setPositiveButton
+                val packageName = apps[selected].activityInfo?.packageName
+                    ?: return@setPositiveButton
+                val old = subActionList(listKey).getOrNull(index)
+                putSubAction(
+                    listKey,
+                    (old ?: Step(
+                        id = WorkflowStore.newId(),
+                        type = StepType.LAUNCH_APP,
+                        waitAfterMs = WAIT_AFTER_MS
+                    )).copy(type = StepType.LAUNCH_APP, packageName = packageName),
+                    index
+                )
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun showSubTaskDialog(listKey: String, existing: Step?, index: Int) {
+        val others = WorkflowStore.loadActive(this)
+        if (others.isEmpty()) {
+            AlertDialog.Builder(this)
+                .setMessage(R.string.no_workflows_to_pick)
+                .setPositiveButton(R.string.ok, null)
+                .show()
+            return
+        }
+        val labels = others.map { it.name }.toTypedArray()
+        var selected = others.indexOfFirst { it.id == existing?.subWorkflowId }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.choose_workflow)
+            .setSingleChoiceItems(labels, selected) { _, which -> selected = which }
+            .setPositiveButton(R.string.ok) { _, _ ->
+                if (selected < 0) return@setPositiveButton
+                val subWorkflowId = others[selected].id
+                val old = subActionList(listKey).getOrNull(index)
+                putSubAction(
+                    listKey,
+                    (old ?: Step(
+                        id = WorkflowStore.newId(),
+                        type = StepType.SUB_TASK,
+                        waitAfterMs = WAIT_AFTER_MS
+                    )).copy(type = StepType.SUB_TASK, subWorkflowId = subWorkflowId),
+                    index
+                )
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun showSubSnippetDialog(listKey: String, existing: Step?, index: Int) {
+        val snippets = CodeLibraryStore.loadAll(this)
+        if (snippets.isEmpty()) {
+            AlertDialog.Builder(this)
+                .setMessage(R.string.no_snippets_yet)
+                .setPositiveButton(R.string.ok, null)
+                .show()
+            return
+        }
+        val labels = snippets.map { it.name }.toTypedArray()
+        var selected = snippets.indexOfFirst { it.id == existing?.snippetId }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.choose_snippet)
+            .setSingleChoiceItems(labels, selected) { _, which -> selected = which }
+            .setPositiveButton(R.string.ok) { _, _ ->
+                if (selected < 0) return@setPositiveButton
+                val snippetId = snippets[selected].id
+                val old = subActionList(listKey).getOrNull(index)
+                putSubAction(
+                    listKey,
+                    (old ?: Step(
+                        id = WorkflowStore.newId(),
+                        type = StepType.TYPE_CODE,
+                        waitAfterMs = WAIT_AFTER_MS
+                    )).copy(type = StepType.TYPE_CODE, snippetId = snippetId),
+                    index
+                )
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun showSubMistakesDialog(listKey: String, existing: Step?, index: Int) {
+        val labels = arrayOf(
+            getString(R.string.mistakes_off),
+            getString(R.string.mistakes_light),
+            getString(R.string.mistakes_normal),
+            getString(R.string.mistakes_heavy)
+        )
+        var selected = when (existing?.mistakeLevel) {
+            MistakeLevel.LIGHT -> 1
+            MistakeLevel.NORMAL -> 2
+            MistakeLevel.HEAVY -> 3
+            else -> 0
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.mistakes_title)
+            .setSingleChoiceItems(labels, selected) { _, which -> selected = which }
+            .setPositiveButton(R.string.ok) { _, _ ->
+                val level = when (selected) {
+                    1 -> MistakeLevel.LIGHT
+                    2 -> MistakeLevel.NORMAL
+                    3 -> MistakeLevel.HEAVY
+                    else -> MistakeLevel.OFF
+                }
+                val old = subActionList(listKey).getOrNull(index)
+                putSubAction(
+                    listKey,
+                    (old ?: Step(
+                        id = WorkflowStore.newId(),
+                        type = StepType.TYPE_EXCEL_ROW,
+                        waitAfterMs = WAIT_AFTER_MS
+                    )).copy(type = StepType.TYPE_EXCEL_ROW, mistakeLevel = level),
+                    index
+                )
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /** Paste sub-action: Clipboard / Typed text / Library, like the main editor. */
+    private fun showSubPasteDialog(listKey: String, existing: Step?, index: Int) {
+        val density = resources.displayMetrics.density
+        val pad = (16 * density).toInt()
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, pad)
+        }
+        val hasLibrary = (existing?.dataSourceId ?: "").isNotBlank()
+        val hasTyped = !hasLibrary && (existing?.text ?: "").isNotBlank()
+        val sourceGroup = RadioGroup(this).apply {
+            orientation = RadioGroup.VERTICAL
+        }
+        val clipboardButton = android.widget.RadioButton(this).apply {
+            text = getString(R.string.paste_source_clipboard)
+            isChecked = !hasLibrary && !hasTyped
+            tag = "clipboard"
+        }
+        val typedButton = android.widget.RadioButton(this).apply {
+            text = getString(R.string.paste_source_typed)
+            isChecked = hasTyped
+            tag = "typed"
+        }
+        val libraryButton = android.widget.RadioButton(this).apply {
+            text = getString(R.string.paste_source_library)
+            isChecked = hasLibrary
+            tag = "library"
+        }
+        sourceGroup.addView(clipboardButton)
+        sourceGroup.addView(typedButton)
+        sourceGroup.addView(libraryButton)
+        layout.addView(sourceGroup)
+        val typedInput = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT
+            setText(if (hasTyped) existing?.text ?: "" else "")
+            hint = getString(R.string.paste_typed_hint)
+        }
+        layout.addView(typedInput)
+        val files = DataFileStore.loadAll(this)
+        val fileSpinner = android.widget.Spinner(this)
+        val fileLabels = mutableListOf(getString(R.string.type_data_none))
+        fileLabels.addAll(files.map { it.name })
+        fileSpinner.adapter = ArrayAdapter(
+            this, android.R.layout.simple_spinner_item, fileLabels
+        ).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        layout.addView(fileSpinner)
+        val columnSpinner = android.widget.Spinner(this)
+        layout.addView(columnSpinner)
+        fun refreshColumns() {
+            val pos = fileSpinner.selectedItemPosition
+            val file = if (pos > 0) files[pos - 1] else null
+            val columns = if (file == null) {
+                emptyList()
+            } else {
+                DataSourceLoader.columns(this, file.type, file.fileName)
+            }
+            columnSpinner.adapter = ArrayAdapter(
+                this, android.R.layout.simple_spinner_item,
+                if (columns.isEmpty()) listOf("") else columns
+            ).apply {
+                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            }
+            if (file != null && file.id == existing?.dataSourceId &&
+                (existing?.dataColumn ?: "") in columns
+            ) {
+                columnSpinner.setSelection(columns.indexOf(existing?.dataColumn ?: ""))
+            }
+        }
+        fileSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(
+                parent: AdapterView<*>?, view: View?, position: Int, id: Long
+            ) {
+                refreshColumns()
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+        val existingIndex = files.indexOfFirst { it.id == existing?.dataSourceId }
+        if (existingIndex >= 0) {
+            fileSpinner.setSelection(existingIndex + 1)
+        }
+        refreshColumns()
+        fun refreshEnabled() {
+            val library = libraryButton.isChecked
+            fileSpinner.isEnabled = library
+            columnSpinner.isEnabled = library
+            typedInput.isEnabled = typedButton.isChecked
+        }
+        sourceGroup.setOnCheckedChangeListener { _, _ -> refreshEnabled() }
+        refreshEnabled()
+        AlertDialog.Builder(this)
+            .setTitle(R.string.paste_dialog_title)
+            .setView(layout)
+            .setPositiveButton(R.string.ok) { _, _ ->
+                val useLibrary = libraryButton.isChecked
+                val useTyped = typedButton.isChecked
+                val pos = fileSpinner.selectedItemPosition
+                val dataSourceId = if (useLibrary && pos > 0) files[pos - 1].id else ""
+                val dataColumn = if (useLibrary) {
+                    columnSpinner.selectedItem as? String ?: ""
+                } else {
+                    ""
+                }
+                val text = if (useTyped) typedInput.text.toString() else ""
+                val old = subActionList(listKey).getOrNull(index)
+                putSubAction(
+                    listKey,
+                    (old ?: Step(
+                        id = WorkflowStore.newId(),
+                        type = StepType.PASTE,
+                        waitAfterMs = WAIT_AFTER_MS
+                    )).copy(
+                        type = StepType.PASTE,
+                        text = text,
+                        dataSourceId = dataSourceId,
+                        dataColumn = dataColumn
+                    ),
+                    index
+                )
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun showSubAreaDialog(listKey: String, existing: Step?, index: Int) {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = (16 * resources.displayMetrics.density).toInt()
+            setPadding(pad, pad, pad, pad)
+        }
+        layout.addView(
+            TextView(this).apply {
+                text = getString(R.string.area_mode_title)
+            }
+        )
+        val modeGroup = RadioGroup(this).apply {
+            orientation = RadioGroup.VERTICAL
+        }
+        listOf(
+            getString(R.string.area_mode_random) to "RANDOM",
+            getString(R.string.area_mode_all) to "ALL"
+        ).forEach { (label, mode) ->
+            modeGroup.addView(
+                android.widget.RadioButton(this).apply {
+                    text = label
+                    isChecked = (existing?.areaClickMode ?: "RANDOM") == mode
+                    tag = mode
+                }
+            )
+        }
+        layout.addView(modeGroup)
+        AlertDialog.Builder(this)
+            .setTitle(R.string.step_area_click)
+            .setView(layout)
+            .setPositiveButton(R.string.ok) { _, _ ->
+                val checkedId = modeGroup.checkedRadioButtonId
+                val mode = if (checkedId >= 0) {
+                    modeGroup.findViewById<android.widget.RadioButton>(checkedId)
+                        ?.tag as? String ?: "RANDOM"
+                } else {
+                    "RANDOM"
+                }
+                launchSubAreaPick(listKey, index, mode)
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun showSubWaitRandomDialog(listKey: String, existing: Step?, index: Int) {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = (16 * resources.displayMetrics.density).toInt()
+            setPadding(pad, pad, pad, pad)
+        }
+        layout.addView(
+            TextView(this).apply {
+                text = getString(R.string.wait_min_title)
+            }
+        )
+        val minPicker = NumberPicker(this).apply {
+            minValue = 0
+            maxValue = MAX_PICKER_100MS
+            value = ((existing?.waitMinMs ?: 0) / 100).toInt().coerceIn(0, MAX_PICKER_100MS)
+        }
+        layout.addView(minPicker)
+        layout.addView(
+            TextView(this).apply {
+                text = getString(R.string.wait_max_title)
+            }
+        )
+        val maxPicker = NumberPicker(this).apply {
+            minValue = 0
+            maxValue = MAX_PICKER_100MS
+            value = ((existing?.waitMaxMs ?: 1000) / 100).toInt().coerceIn(0, MAX_PICKER_100MS)
+        }
+        layout.addView(maxPicker)
+        AlertDialog.Builder(this)
+            .setTitle(R.string.step_wait_random)
+            .setView(layout)
+            .setPositiveButton(R.string.ok) { _, _ ->
+                val minMs = minPicker.value * 100L
+                var maxMs = maxPicker.value * 100L
+                if (maxMs < minMs) maxMs = minMs
+                val old = subActionList(listKey).getOrNull(index)
+                putSubAction(
+                    listKey,
+                    (old ?: Step(
+                        id = WorkflowStore.newId(),
+                        type = StepType.WAIT_RANDOM,
+                        waitAfterMs = WAIT_AFTER_MS
+                    )).copy(
+                        type = StepType.WAIT_RANDOM,
+                        waitMinMs = minMs, waitMaxMs = maxMs
+                    ),
+                    index
+                )
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun showSubUriDialog(
+        listKey: String,
+        existing: Step?,
+        index: Int,
+        isNetwork: Boolean
+    ) {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_TEXT_VARIATION_URI
+            setText(if (isNetwork) existing?.networkUrl ?: "" else existing?.intentUri ?: "")
+            hint = getString(
+                if (isNetwork) R.string.network_url_hint else R.string.intent_uri_hint
+            )
+            val pad = (16 * resources.displayMetrics.density).toInt()
+            setPadding(pad, pad, pad, pad)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(
+                if (isNetwork) R.string.step_network_get else R.string.step_intent_uri
+            )
+            .setView(input)
+            .setPositiveButton(R.string.ok) { _, _ ->
+                val value = input.text.toString()
+                val old = subActionList(listKey).getOrNull(index)
+                putSubAction(
+                    listKey,
+                    (old ?: Step(
+                        id = WorkflowStore.newId(),
+                        type = if (isNetwork) StepType.NETWORK_GET else StepType.INTENT_URI,
+                        waitAfterMs = WAIT_AFTER_MS
+                    )).copy(
+                        type = if (isNetwork) StepType.NETWORK_GET else StepType.INTENT_URI,
+                        networkUrl = if (isNetwork) value else "",
+                        intentUri = if (isNetwork) "" else value
+                    ),
+                    index
+                )
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun showSubSlideDialog(listKey: String, existing: Step?, index: Int) {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = (16 * resources.displayMetrics.density).toInt()
+            setPadding(pad, pad, pad, pad)
+        }
+        layout.addView(
+            TextView(this).apply {
+                text = getString(R.string.slide_direction_title)
+            }
+        )
+        val directionGroup = RadioGroup(this).apply {
+            orientation = RadioGroup.VERTICAL
+        }
+        listOf(
+            getString(R.string.slide_direction_down) to "DOWN",
+            getString(R.string.slide_direction_up) to "UP"
+        ).forEach { (label, direction) ->
+            directionGroup.addView(
+                android.widget.RadioButton(this).apply {
+                    text = label
+                    isChecked = (existing?.slideDirection ?: "DOWN") == direction
+                    tag = direction
+                }
+            )
+        }
+        layout.addView(directionGroup)
+        layout.addView(
+            TextView(this).apply {
+                text = getString(R.string.slide_count_title)
+            }
+        )
+        val countPicker = NumberPicker(this).apply {
+            minValue = 1
+            maxValue = 20
+            value = (existing?.slideCount ?: 1).coerceIn(1, 20)
+        }
+        layout.addView(countPicker)
+        AlertDialog.Builder(this)
+            .setTitle(R.string.step_slide_list)
+            .setView(layout)
+            .setPositiveButton(R.string.ok) { _, _ ->
+                val checkedId = directionGroup.checkedRadioButtonId
+                val direction = if (checkedId >= 0) {
+                    directionGroup.findViewById<android.widget.RadioButton>(checkedId)
+                        ?.tag as? String ?: "DOWN"
+                } else {
+                    "DOWN"
+                }
+                val old = subActionList(listKey).getOrNull(index)
+                putSubAction(
+                    listKey,
+                    (old ?: Step(
+                        id = WorkflowStore.newId(),
+                        type = StepType.SLIDE_LIST,
+                        waitAfterMs = WAIT_AFTER_MS
+                    )).copy(
+                        type = StepType.SLIDE_LIST,
+                        slideDirection = direction,
+                        slideCount = countPicker.value
+                    ),
+                    index
+                )
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun showSubQsDialog(listKey: String, existing: Step?, index: Int) {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            val pad = (16 * resources.displayMetrics.density).toInt()
+            setPadding(pad, pad, pad, pad)
+        }
+        val tileGroup = RadioGroup(this).apply {
+            orientation = RadioGroup.VERTICAL
+        }
+        TaskEditorActivity.QS_TILE_LABELS.forEach { label ->
+            tileGroup.addView(
+                android.widget.RadioButton(this).apply {
+                    text = label
+                    isChecked = existing?.qsTileLabel == label
+                    tag = label
+                }
+            )
+        }
+        layout.addView(tileGroup)
+        layout.addView(
+            TextView(this).apply {
+                text = getString(R.string.qs_tile_note)
+            }
+        )
+        val scroll = android.widget.ScrollView(this)
+        scroll.addView(layout)
+        AlertDialog.Builder(this)
+            .setTitle(R.string.qs_tile_title)
+            .setView(scroll)
+            .setPositiveButton(R.string.ok) { _, _ ->
+                val checkedId = tileGroup.checkedRadioButtonId
+                if (checkedId < 0) return@setPositiveButton
+                val label = tileGroup.findViewById<android.widget.RadioButton>(checkedId)
+                    ?.tag as? String ?: return@setPositiveButton
+                val old = subActionList(listKey).getOrNull(index)
+                putSubAction(
+                    listKey,
+                    (old ?: Step(
+                        id = WorkflowStore.newId(),
+                        type = StepType.QS_TILE,
+                        waitAfterMs = WAIT_AFTER_MS
+                    )).copy(type = StepType.QS_TILE, qsTileLabel = label),
+                    index
+                )
             }
             .setNegativeButton(R.string.cancel, null)
             .show()
@@ -890,7 +2027,11 @@ class RecognitionEditActivity : AppCompatActivity() {
      * Also exposes wait-after and typing-mistakes (the runner already
      * applies mistakeLevel for TYPE_TEXT); defaults keep old behaviour:
      * wait 2000 ms, mistakes Off. */
-    private fun showTypeTextSubDialog(listKey: String) {
+    private fun showTypeTextSubDialog(
+        listKey: String,
+        existing: Step? = null,
+        index: Int = -1
+    ) {
         val density = resources.displayMetrics.density
         val pad = (16 * density).toInt()
         val layout = LinearLayout(this).apply {
@@ -899,6 +2040,7 @@ class RecognitionEditActivity : AppCompatActivity() {
         }
         val input = EditText(this).apply {
             inputType = InputType.TYPE_CLASS_TEXT
+            setText(existing?.text ?: "")
         }
         layout.addView(input)
         val waitLabel = TextView(this).apply {
@@ -908,7 +2050,8 @@ class RecognitionEditActivity : AppCompatActivity() {
         val waitPicker = NumberPicker(this).apply {
             minValue = 0
             maxValue = MAX_PICKER_100MS
-            value = (WAIT_AFTER_MS / 100).toInt().coerceIn(0, MAX_PICKER_100MS)
+            value = ((existing?.waitAfterMs ?: WAIT_AFTER_MS) / 100).toInt()
+                .coerceIn(0, MAX_PICKER_100MS)
         }
         layout.addView(waitPicker)
         val mistakesLabel = TextView(this).apply {
@@ -927,7 +2070,7 @@ class RecognitionEditActivity : AppCompatActivity() {
             mistakesGroup.addView(
                 android.widget.RadioButton(this).apply {
                     text = label
-                    isChecked = level == MistakeLevel.OFF
+                    isChecked = level == (existing?.mistakeLevel ?: MistakeLevel.OFF)
                     tag = level
                 }
             )
@@ -944,39 +2087,53 @@ class RecognitionEditActivity : AppCompatActivity() {
                 } else {
                     MistakeLevel.OFF
                 }
-                addSubAction(
+                val old = subActionList(listKey).getOrNull(index)
+                putSubAction(
                     listKey,
-                    Step(
+                    (old ?: Step(
                         id = WorkflowStore.newId(),
+                        type = StepType.TYPE_TEXT,
+                        waitAfterMs = WAIT_AFTER_MS
+                    )).copy(
                         type = StepType.TYPE_TEXT,
                         text = input.text.toString(),
                         waitAfterMs = waitPicker.value * 100L,
                         mistakeLevel = level
-                    )
+                    ),
+                    index
                 )
             }
             .setNegativeButton(R.string.cancel, null)
             .show()
     }
 
-    private fun showWaitSubDialog(listKey: String) {
+    private fun showWaitSubDialog(
+        listKey: String,
+        existing: Step? = null,
+        index: Int = -1
+    ) {
         val picker = NumberPicker(this).apply {
             minValue = 0
             maxValue = MAX_PICKER_100MS
-            value = 10
+            value = ((existing?.durationMs ?: 1000L) / 100).toInt()
+                .coerceIn(0, MAX_PICKER_100MS)
         }
         AlertDialog.Builder(this)
             .setTitle(R.string.rec_wait_title)
             .setView(picker)
             .setPositiveButton(R.string.ok) { _, _ ->
-                addSubAction(
+                val old = subActionList(listKey).getOrNull(index)
+                putSubAction(
                     listKey,
-                    Step(
+                    (old ?: Step(
                         id = WorkflowStore.newId(),
                         type = StepType.WAIT,
-                        durationMs = picker.value * 100L,
                         waitAfterMs = WAIT_AFTER_MS
-                    )
+                    )).copy(
+                        type = StepType.WAIT,
+                        durationMs = picker.value * 100L
+                    ),
+                    index
                 )
             }
             .setNegativeButton(R.string.cancel, null)
@@ -1011,7 +2168,9 @@ class RecognitionEditActivity : AppCompatActivity() {
                 }
             }
             StepType.COLOR_RECOGNITION -> {
-                if (!colorPicked || !hasRegion) {
+                // An anchor counts as picked: the anchor branch needs
+                // no region at all (it checks one live pixel).
+                if (!colorPicked || (!hasRegion && !anchorPicked)) {
                     Toast.makeText(this, R.string.rec_error_no_color, Toast.LENGTH_LONG).show()
                     return
                 }
@@ -1059,6 +2218,9 @@ class RecognitionEditActivity : AppCompatActivity() {
             regionBottom = if (hasRegion) regionBottom else -1,
             colorValue = colorValue,
             colorTolerance = pickerTolerance.value,
+            anchorX = anchorX,
+            anchorY = anchorY,
+            stepCycles = pickerCycles.value,
             ocrVariable = ocrVariable.ifBlank { "OCR_TEXT" },
             successMode = successMode,
             clickCount = pickerClickCount.value,
@@ -1104,5 +2266,8 @@ class RecognitionEditActivity : AppCompatActivity() {
         StepType.STOP_TASK -> getString(R.string.rec_type_stop_task)
         StepType.INTENT_URI -> getString(R.string.rec_type_intent)
         StepType.NETWORK_GET -> getString(R.string.rec_type_network)
+        StepType.SLIDE_LIST -> getString(R.string.step_slide_list)
+        StepType.QS_TILE -> getString(R.string.step_qs_tile)
+        StepType.POWER_DIALOG -> getString(R.string.step_power_dialog)
     }
 }

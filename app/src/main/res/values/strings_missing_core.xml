@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Strings for the missing-core layer (SLIDE_LIST / QS_TILE / POWER_DIALOG
+  steps, per-step cycles, recognition nesting guard). All English only.
+  New UI strings for this layer live here, never in strings.xml.
+-->
+<resources>
+    <string name="run_slide_no_list">No scrollable list found</string>
+    <string name="run_qs_tile_not_found">Quick setting tile not found</string>
+    <string name="run_power_dialog_unavailable">Power dialog is not available on this device</string>
+    <string name="run_recognition_too_deep">Recognition nesting too deep</string>
+</resources>

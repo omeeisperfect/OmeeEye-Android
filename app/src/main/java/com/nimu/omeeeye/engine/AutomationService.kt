@@ -632,6 +632,261 @@ class AutomationService : AccessibilityService() {
         }
     }
 
+    // ------------------------------------------------------------------
+    // Missing-core actions: list slide, Quick Settings tile, power
+    // dialog, color anchor picking
+    // ------------------------------------------------------------------
+
+    /**
+     * Scrolls the first scrollable list on screen. [direction] "DOWN"
+     * scrolls forward, "UP" scrolls backward (any other value scrolls
+     * forward). [count] is clamped to 1..20, with ~400 ms between
+     * scrolls. Returns false only when there is no service root or no
+     * scrollable node; once a scrollable node is found the scrolls are
+     * best-effort, because a scroll at the end of a list legitimately
+     * reports false and must not fail the step for that reason.
+     */
+    fun scrollList(direction: String, count: Int): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val scrollable = try {
+            findScrollableNode(root)
+        } catch (e: Exception) {
+            null
+        } ?: run {
+            try {
+                root.recycle()
+            } catch (e: Exception) {
+                // Ignore.
+            }
+            return false
+        }
+        val action = if (direction == "UP") {
+            AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+        } else {
+            AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+        }
+        try {
+            repeat(count.coerceIn(1, 20)) { i ->
+                if (i > 0) {
+                    try {
+                        Thread.sleep(400)
+                    } catch (e: InterruptedException) {
+                        Thread.currentThread().interrupt()
+                    }
+                }
+                try {
+                    scrollable.performAction(action)
+                } catch (e: Exception) {
+                    // Best-effort: see the KDoc above.
+                }
+            }
+            return true
+        } finally {
+            try {
+                if (scrollable !== root) scrollable.recycle()
+            } catch (e: Exception) {
+                // Ignore.
+            }
+            try {
+                root.recycle()
+            } catch (e: Exception) {
+                // Ignore.
+            }
+        }
+    }
+
+    /** Depth-first search for the first scrollable node. Does not recycle
+     * the node it returns, or any node on the path to it; non-matching
+     * siblings are recycled. */
+    private fun findScrollableNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        if (node.isScrollable) return node
+        for (i in 0 until node.childCount) {
+            val child = try {
+                node.getChild(i)
+            } catch (e: Exception) {
+                null
+            } ?: continue
+            val found = try {
+                findScrollableNode(child)
+            } catch (e: Exception) {
+                null
+            }
+            if (found != null) return found
+            try {
+                child.recycle()
+            } catch (e: Exception) {
+                // Ignore.
+            }
+        }
+        return null
+    }
+
+    /**
+     * Opens Quick Settings and taps the tile whose text or
+     * contentDescription matches [label]. An exact match
+     * (case-insensitive) is tried first, then a contains-match. The
+     * clicked node is the nearest clickable ancestor of the matching
+     * node, because a tile's label is usually a non-clickable child of
+     * the clickable tile. Returns false when the label is blank, Quick
+     * Settings cannot be opened, or no tile matches. This is an
+     * ordinary ACTION step and has nothing to do with Hide mode.
+     */
+    fun openQuickSettingsAndTapTile(label: String): Boolean {
+        if (label.isBlank()) return false
+        try {
+            if (!performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS)) return false
+        } catch (e: Exception) {
+            return false
+        }
+        try {
+            Thread.sleep(1200)
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            return false
+        }
+        val root = try {
+            rootInActiveWindow
+        } catch (e: Exception) {
+            null
+        } ?: return false
+        val trimmed = label.trim()
+        val target = try {
+            findQsTileNode(root, trimmed, exact = true)
+                ?: findQsTileNode(root, trimmed, exact = false)
+        } catch (e: Exception) {
+            null
+        } ?: run {
+            try {
+                root.recycle()
+            } catch (e: Exception) {
+                // Ignore.
+            }
+            return false
+        }
+        return try {
+            target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        } catch (e: Exception) {
+            false
+        } finally {
+            try {
+                if (target !== root) target.recycle()
+            } catch (e: Exception) {
+                // Ignore.
+            }
+            try {
+                root.recycle()
+            } catch (e: Exception) {
+                // Ignore.
+            }
+        }
+    }
+
+    /** Depth-first QS tile search. Does not recycle the node it returns,
+     * or any node on the path to it; non-matching siblings are recycled.
+     * A second pass over the same root re-obtains fresh child nodes. */
+    private fun findQsTileNode(
+        node: AccessibilityNodeInfo,
+        label: String,
+        exact: Boolean
+    ): AccessibilityNodeInfo? {
+        val text = node.text?.toString()?.trim() ?: ""
+        val desc = node.contentDescription?.toString()?.trim() ?: ""
+        val matches = if (exact) {
+            text.equals(label, ignoreCase = true) ||
+                desc.equals(label, ignoreCase = true)
+        } else {
+            (text.isNotEmpty() && text.contains(label, ignoreCase = true)) ||
+                (desc.isNotEmpty() && desc.contains(label, ignoreCase = true))
+        }
+        if (matches) return nearestClickable(node)
+        for (i in 0 until node.childCount) {
+            val child = try {
+                node.getChild(i)
+            } catch (e: Exception) {
+                null
+            } ?: continue
+            val found = try {
+                findQsTileNode(child, label, exact)
+            } catch (e: Exception) {
+                null
+            }
+            if (found != null) return found
+            try {
+                child.recycle()
+            } catch (e: Exception) {
+                // Ignore.
+            }
+        }
+        return null
+    }
+
+    /** Walks up from [node] to the nearest clickable ancestor (the node
+     * itself when it is clickable). Nodes climbed from are recycled. */
+    private fun nearestClickable(node: AccessibilityNodeInfo): AccessibilityNodeInfo {
+        var current = node
+        var hops = 0
+        while (!current.isClickable && hops < 8) {
+            val parent = try {
+                current.parent
+            } catch (e: Exception) {
+                null
+            } ?: break
+            if (parent === current) break
+            val previous = current
+            current = parent
+            hops++
+            try {
+                previous.recycle()
+            } catch (e: Exception) {
+                // Ignore.
+            }
+        }
+        return current
+    }
+
+    /**
+     * Shows the system power dialog (GLOBAL_ACTION_POWER_DIALOG).
+     * HONEST LIMIT, stated here: this is the closest working
+     * alternative to a power-key long-press — true power-key injection
+     * is impossible for an accessibility service on Android, and this
+     * method never pretends otherwise. Returns false when the device
+     * does not support the dialog.
+     */
+    fun showPowerDialog(): Boolean {
+        return try {
+            performGlobalAction(GLOBAL_ACTION_POWER_DIALOG)
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Returns the ARGB pixel at absolute screen point [point], taken
+     * from a fresh screenshot, or null on any failure (screenshot
+     * unavailable, point outside the screenshot, or read error). Used
+     * by the later Color anchor picker; it never invents a color.
+     */
+    fun pickColorAt(point: Point): Int? {
+        val bitmap = takeScreenshotBitmap() ?: return null
+        return try {
+            if (point.x !in 0 until bitmap.width ||
+                point.y !in 0 until bitmap.height
+            ) {
+                null
+            } else {
+                bitmap.getPixel(point.x, point.y)
+            }
+        } catch (e: Exception) {
+            null
+        } finally {
+            try {
+                bitmap.recycle()
+            } catch (e: Exception) {
+                // Ignore.
+            }
+        }
+    }
+
     /**
      * Types one data row's values into the spreadsheet app.
      *

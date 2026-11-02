@@ -186,6 +186,13 @@ object WorkflowStore {
         put("networkUrl", s.networkUrl)
         put("dataSourceId", s.dataSourceId)
         put("dataColumn", s.dataColumn)
+        put("stepCycles", s.stepCycles)
+        put("areaClickMode", s.areaClickMode)
+        put("slideDirection", s.slideDirection)
+        put("slideCount", s.slideCount)
+        put("qsTileLabel", s.qsTileLabel)
+        put("anchorX", s.anchorX)
+        put("anchorY", s.anchorY)
     }
 
     private fun stepsFromArray(arr: JSONArray?): List<Step> {
@@ -264,7 +271,14 @@ object WorkflowStore {
             intentUri = obj.optString("intentUri", ""),
             networkUrl = obj.optString("networkUrl", ""),
             dataSourceId = obj.optString("dataSourceId", ""),
-            dataColumn = obj.optString("dataColumn", "")
+            dataColumn = obj.optString("dataColumn", ""),
+            stepCycles = obj.optInt("stepCycles", 1),
+            areaClickMode = obj.optString("areaClickMode", "RANDOM"),
+            slideDirection = obj.optString("slideDirection", "DOWN"),
+            slideCount = obj.optInt("slideCount", 1),
+            qsTileLabel = obj.optString("qsTileLabel", ""),
+            anchorX = obj.optInt("anchorX", -1),
+            anchorY = obj.optInt("anchorY", -1)
         )
     }
 }

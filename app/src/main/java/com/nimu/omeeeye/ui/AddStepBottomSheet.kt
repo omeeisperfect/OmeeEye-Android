@@ -189,6 +189,21 @@ class AddStepBottomSheet : BottomSheetDialogFragment() {
                     android.R.drawable.ic_menu_compass,
                     R.string.step_network_get, R.string.step_network_get_desc,
                     StepType.NETWORK_GET, false
+                ),
+                Row(
+                    android.R.drawable.ic_menu_sort_by_size,
+                    R.string.step_slide_list, R.string.step_slide_list_desc,
+                    StepType.SLIDE_LIST, false
+                ),
+                Row(
+                    android.R.drawable.ic_menu_preferences,
+                    R.string.step_qs_tile, R.string.step_qs_tile_desc,
+                    StepType.QS_TILE, false
+                ),
+                Row(
+                    android.R.drawable.ic_lock_power_off,
+                    R.string.step_power_dialog, R.string.step_power_dialog_desc,
+                    StepType.POWER_DIALOG, false
                 )
             )
         )

@@ -1,7 +1,11 @@
 package com.nimu.omeeeye.ui
 
 import android.content.Intent
+import android.content.pm.ShortcutInfo
+import android.content.pm.ShortcutManager
+import android.graphics.drawable.Icon
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -9,8 +13,10 @@ import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
+import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.TextView
+import android.widget.TimePicker
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -18,7 +24,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.nimu.omeeeye.R
+import com.nimu.omeeeye.data.TriggerStore
 import com.nimu.omeeeye.data.WorkflowStore
+import com.nimu.omeeeye.engine.TriggerEngine
 import com.nimu.omeeeye.engine.WorkflowRunner
 import com.nimu.omeeeye.model.Workflow
 
@@ -30,6 +38,10 @@ import com.nimu.omeeeye.model.Workflow
 class MainActivity : AppCompatActivity() {
 
     companion object {
+        // Home-screen shortcut (item 2): the pinned shortcut's intent
+        // carries the workflow id under this extra; onCreate and
+        // onNewIntent both honour it through the existing run path.
+        const val EXTRA_SHORTCUT_WORKFLOW_ID = "shortcut_workflow_id"
         private const val PREFS_NAME = "omeeeye_prefs"
         private const val KEY_SORT_MODE = "sort_mode"
         private const val SORT_NEWEST = "newest"
@@ -127,6 +139,33 @@ class MainActivity : AppCompatActivity() {
             override fun onPlay(workflow: Workflow) {
                 FloatingService.startRunning(this@MainActivity, workflow.id)
             }
+
+            override fun onEditDetails(workflow: Workflow) {
+                // Rename lives in the editor (its name field): reuse
+                // the existing Edit path, no separate rename screen.
+                val intent = Intent(this@MainActivity, TaskEditorActivity::class.java)
+                intent.putExtra("workflow_id", workflow.id)
+                startActivity(intent)
+            }
+
+            override fun onShare(workflow: Workflow) {
+                shareWorkflow(workflow)
+            }
+
+            override fun onShortcut(workflow: Workflow) {
+                pinShortcut(workflow)
+            }
+
+            override fun onTimed(workflow: Workflow) {
+                showTimedDialog(workflow)
+            }
+
+            override fun onGesturePath(workflow: Workflow) {
+                // False = overlay permission missing: the guide dialog
+                // is already shown by the service launcher, nothing
+                // else to do (never a fake drawing).
+                GesturePathService.start(this@MainActivity, workflow.id)
+            }
         })
         workflowList.layoutManager = LinearLayoutManager(this)
         workflowList.adapter = adapter
@@ -221,6 +260,134 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.nav_settings).setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
+
+        // Home-screen shortcut launch (item 2): a pinned shortcut
+        // returns here with the workflow id; run it, same as Play.
+        handleShortcutIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleShortcutIntent(intent)
+    }
+
+    /** Runs the workflow named by a pinned shortcut, if it still exists. */
+    private fun handleShortcutIntent(intent: Intent?) {
+        val id = intent?.getStringExtra(EXTRA_SHORTCUT_WORKFLOW_ID)
+            ?: return
+        if (id.isBlank()) return
+        val workflow = WorkflowStore.get(this, id)
+        if (workflow == null || workflow.deleted) {
+            Toast.makeText(
+                this, R.string.shortcut_not_found, Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+        // Existing run path, identical to tapping Play on the card.
+        FloatingService.startRunning(this, workflow.id)
+    }
+
+    /** Home-screen shortcut (item 2) via ShortcutManager.requestPinShortcut. */
+    private fun pinShortcut(workflow: Workflow) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            Toast.makeText(
+                this, R.string.shortcut_not_supported, Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+        val manager = getSystemService(ShortcutManager::class.java)
+        if (manager == null || !manager.isRequestPinShortcutSupported) {
+            Toast.makeText(
+                this, R.string.shortcut_not_supported, Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+        val shortcutIntent = Intent(this, MainActivity::class.java).apply {
+            putExtra(EXTRA_SHORTCUT_WORKFLOW_ID, workflow.id)
+        }
+        val info = ShortcutInfo.Builder(this, workflow.id)
+            .setShortLabel(workflow.name.ifBlank { getString(R.string.app_name) })
+            .setIcon(Icon.createWithResource(this, R.mipmap.ic_launcher))
+            .setIntent(shortcutIntent)
+            .build()
+        try {
+            manager.requestPinShortcut(info, null)
+            Toast.makeText(
+                this, R.string.shortcut_created, Toast.LENGTH_LONG
+            ).show()
+        } catch (e: Exception) {
+            Toast.makeText(
+                this, R.string.shortcut_not_supported, Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    /** Share task (item 5): system share sheet, exported JSON + name. */
+    private fun shareWorkflow(workflow: Workflow) {
+        try {
+            val text = workflow.name + "\n\n" +
+                WorkflowStore.workflowToJson(workflow).toString()
+            val share = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_SUBJECT, workflow.name)
+                putExtra(Intent.EXTRA_TEXT, text)
+            }
+            startActivity(
+                Intent.createChooser(share, getString(R.string.share_task_title))
+            )
+        } catch (e: Exception) {
+            Toast.makeText(
+                this, R.string.share_task_failed, Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    /** Timed execution (item 4): time picker -> TIME trigger. */
+    private fun showTimedDialog(workflow: Workflow) {
+        val density = resources.displayMetrics.density
+        val pad = (16 * density).toInt()
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, pad)
+        }
+        val picker = TimePicker(this).apply {
+            setIs24HourView(true)
+        }
+        layout.addView(picker)
+        layout.addView(
+            TextView(this).apply {
+                text = getString(R.string.timed_note)
+                val smallPad = (8 * density).toInt()
+                setPadding(0, smallPad, 0, 0)
+            }
+        )
+        AlertDialog.Builder(this)
+            .setTitle(R.string.timed_title)
+            .setView(layout)
+            .setPositiveButton(R.string.ok) { _, _ ->
+                val hour = picker.hour
+                val minute = picker.minute
+                val trigger = TriggerStore.TriggerConfig(
+                    id = TriggerStore.newId(),
+                    kind = TriggerStore.TriggerKind.TIME,
+                    workflowId = workflow.id,
+                    enabled = true,
+                    timeMinutes = hour * 60 + minute
+                )
+                TriggerStore.save(this, trigger)
+                TriggerEngine.rescheduleTimeTriggers(this)
+                Toast.makeText(
+                    this,
+                    getString(
+                        R.string.timed_set,
+                        String.format("%02d:%02d", hour, minute)
+                    ),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
     }
 
     // ---------- Workflow tools: Export / Import (feature 12) ----------

@@ -167,6 +167,17 @@ class FloatingService : Service() {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             startActivity(main)
         }
+        // Floating panel chooser (item 7): only the chosen functions
+        // show. Close and Expand are ALWAYS visible even when
+        // unchecked, so the panel can never be configured into a
+        // state with no way back: Close dismisses it, Expand opens
+        // Home (and from there Settings).
+        view.findViewById<View>(R.id.btn_configure).visibility =
+            fnVisibility(FloatingPanelPrefs.FN_CONFIGURE)
+        view.findViewById<View>(R.id.btn_play).visibility =
+            fnVisibility(FloatingPanelPrefs.FN_PLAY)
+        view.findViewById<View>(R.id.btn_target).visibility =
+            fnVisibility(FloatingPanelPrefs.FN_TARGET)
         windowManager.addView(view, overlayParams(y = 300))
         idleView = view
     }
@@ -206,6 +217,17 @@ class FloatingService : Service() {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             startActivity(main)
         }
+        // Floating panel chooser (item 7): only the chosen functions
+        // show. Stop and More are ALWAYS visible even when unchecked:
+        // a running workflow must always be stoppable, and More is
+        // the way back to Home (and from there Settings).
+        pauseButton?.visibility = fnVisibility(FloatingPanelPrefs.FN_PAUSE)
+        view.findViewById<View>(R.id.run_btn_back).visibility =
+            fnVisibility(FloatingPanelPrefs.FN_BACK)
+        view.findViewById<View>(R.id.run_btn_home).visibility =
+            fnVisibility(FloatingPanelPrefs.FN_HOME)
+        view.findViewById<View>(R.id.run_btn_recents).visibility =
+            fnVisibility(FloatingPanelPrefs.FN_RECENTS)
         windowManager.addView(view, overlayParams(y = 300))
         runningView = view
     }
@@ -218,6 +240,10 @@ class FloatingService : Service() {
         }
         startActivity(editor)
     }
+
+    /** Floating panel chooser (item 7): chosen -> VISIBLE, else GONE. */
+    private fun fnVisibility(fn: String): Int =
+        if (FloatingPanelPrefs.isEnabled(this, fn)) View.VISIBLE else View.GONE
 
     private fun overlayParams(y: Int): WindowManager.LayoutParams {
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Strings for the missing-core editors (SLIDE_LIST / QS_TILE /
+  POWER_DIALOG steps, insert-at-position, per-step cycles, area-click
+  modes, paste sources, launch-app search, color anchor, image
+  template preview). All English only. Never edit strings.xml or
+  strings_missing_core.xml for these; this file is the only home for
+  editor strings added by this layer.
+-->
+<resources>
+    <string name="step_slide_list">Slide list</string>
+    <string name="step_slide_list_desc">Scroll a list up or down, repeatedly</string>
+    <string name="step_qs_tile">Quick setting tile</string>
+    <string name="step_qs_tile_desc">Open Quick Settings and tap a tile</string>
+    <string name="step_power_dialog">Power dialog</string>
+    <string name="step_power_dialog_desc">Open the system power dialog</string>
+
+    <string name="editor_insert_position_title">Insert position</string>
+    <string name="cycles_title">Cycles</string>
+    <string name="step_cycles_format">x%1$d</string>
+
+    <string name="slide_direction_title">Direction</string>
+    <string name="slide_direction_down">Down</string>
+    <string name="slide_direction_up">Up</string>
+    <string name="slide_count_title">Slides</string>
+
+    <string name="qs_tile_title">Quick setting tile</string>
+    <string name="qs_tile_note">Android does not provide an API to list the tiles actually present on this device, so this list offers standard tile names. If the chosen tile is not on this device, the step fails cleanly instead of pretending success.</string>
+
+    <string name="power_dialog_title">Power dialog</string>
+    <string name="power_dialog_note">This step opens the system power dialog. Android does not allow an app to inject a power-button long-press, so this is the closest alternative.</string>
+
+    <string name="area_mode_title">Area click mode</string>
+    <string name="area_mode_random">One random point</string>
+    <string name="area_mode_all">All points (grid)</string>
+    <string name="area_pick_region_again">Pick region again</string>
+    <string name="area_pick_region_first">Pick a region first, then choose the mode.</string>
+
+    <string name="paste_source_typed">Typed text</string>
+    <string name="paste_typed_hint">Text to paste</string>
+
+    <string name="launch_search_hint">Search apps</string>
+
+    <string name="color_anchor_pick">Pick anchor point</string>
+    <string name="color_anchor_none">No anchor point picked</string>
+    <string name="color_anchor_picked">Anchor picked at (%1$d, %2$d)</string>
+    <string name="color_anchor_guide_title">How to set up the anchor</string>
+    <string name="color_anchor_guide_message">Move to the screen that shows the color you want to watch, then tap the exact point whose color should be watched. That point becomes the anchor: at run time only the pixel at the anchor is checked, instead of searching a whole region. Cancel stops without picking anything; Save starts the on-screen pick.</string>
+    <string name="color_anchor_never_show">Never show again</string>
+    <string name="color_anchor_failed">Could not read the color at that point</string>
+    <string name="color_anchor_service_missing">Accessibility service is not available, so the anchor color could not be read</string>
+
+    <string name="rec_template_preview_title">Template preview</string>
+    <string name="rec_template_save">Save</string>
+    <string name="rec_template_discard">Discard</string>
+
+    <string name="rec_cycles_title">Cycles</string>
+    <string name="rec_sub_action_title">Choose action</string>
+</resources>

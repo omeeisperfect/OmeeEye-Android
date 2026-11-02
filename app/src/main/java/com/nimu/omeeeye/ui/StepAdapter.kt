@@ -129,10 +129,13 @@ class StepAdapter(
         StepType.STOP_TASK -> android.R.drawable.ic_menu_close_clear_cancel
         StepType.INTENT_URI -> android.R.drawable.ic_menu_share
         StepType.NETWORK_GET -> android.R.drawable.ic_menu_compass
+        StepType.SLIDE_LIST -> android.R.drawable.ic_menu_sort_by_size
+        StepType.QS_TILE -> android.R.drawable.ic_menu_preferences
+        StepType.POWER_DIALOG -> android.R.drawable.ic_lock_power_off
     }
 
-    private fun titleFor(context: android.content.Context, step: Step): String =
-        when (step.type) {
+    private fun titleFor(context: android.content.Context, step: Step): String {
+        val base = when (step.type) {
             StepType.TAP -> context.getString(R.string.step_tap)
             StepType.SWIPE -> context.getString(R.string.step_swipe)
             StepType.TYPE_TEXT -> context.getString(R.string.step_type_text)
@@ -171,5 +174,16 @@ class StepAdapter(
             StepType.STOP_TASK -> context.getString(R.string.step_stop_task)
             StepType.INTENT_URI -> context.getString(R.string.step_intent_uri)
             StepType.NETWORK_GET -> context.getString(R.string.step_network_get)
+            StepType.SLIDE_LIST -> context.getString(R.string.step_slide_list)
+            StepType.QS_TILE -> context.getString(R.string.step_qs_tile)
+            StepType.POWER_DIALOG -> context.getString(R.string.step_power_dialog)
         }
+        // Per-step cycles: a repeated step shows "xN" beside its title;
+        // cycles == 1 (the default, and every old step) shows no suffix.
+        return if (step.stepCycles > 1) {
+            base + " " + context.getString(R.string.step_cycles_format, step.stepCycles)
+        } else {
+            base
+        }
+    }
 }

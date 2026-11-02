@@ -62,6 +62,17 @@ import kotlin.random.Random
  * - OCR variables persist for the whole run; data variables change per
  *   row. %NAME% substitution applies to typed text, code, button text,
  *   intent URIs and network URLs.
+ * - Per-step cycles (missing-core layer): a step's [Step.stepCycles]
+ *   (clamped 1..99) repeats that step in sequence inside a full run;
+ *   1 is today's behaviour. A Jump during a repeat skips the remaining
+ *   repeats and applies; Stopped ends the run. Single-step tests always
+ *   run once, regardless of stepCycles. History keeps one entry per
+ *   step (combined duration).
+ * - Recognition nesting (missing-core layer): custom / retry /
+ *   afterRetry sub-action lists may contain nested recognition steps.
+ *   They arrive with an incremented depth via [executeEmbedded]; a
+ *   recognition step at depth >= MAX_RECOGNITION_DEPTH (top level + 2
+ *   nested levels) fails with "Recognition nesting too deep".
  */
 object WorkflowRunner {
 
@@ -89,6 +100,16 @@ object WorkflowRunner {
     }
 
     private const val MAX_SUB_TASK_DEPTH = 5
+    /**
+     * Recognition nesting budget, as a depth limit: a top-level
+     * recognition step runs at depth 0 and may nest recognition steps
+     * 2 levels deep (depths 1 and 2). A recognition step reached at
+     * depth >= this value fails with "Recognition nesting too deep"
+     * instead of recursing forever. The depth counter is shared with
+     * sub-tasks, so a recognition step inside a sub-task starts with a
+     * smaller remaining budget.
+     */
+    private const val MAX_RECOGNITION_DEPTH = 3
     private const val TICK_INTERVAL_MS = 500L
     private const val SLEEP_CHUNK_MS = 100L
     private const val MAX_STEP_EXECUTIONS = 10000
@@ -143,7 +164,9 @@ object WorkflowRunner {
 
     /**
      * Runs exactly one step of [workflow]: same step logic as a full run,
-     * but no cycles and no waitAfterMs afterwards. A jump result from a
+     * but no cycles and no waitAfterMs afterwards. Per-step
+     * [Step.stepCycles] is likewise ignored: a single-step test always
+     * runs once, regardless of stepCycles. A jump result from a
      * recognition step counts as finished here (a single step cannot
      * continue anywhere). Ignored while another run is active.
      */
@@ -298,14 +321,36 @@ object WorkflowRunner {
                 postStepChanged(index, workflow.steps.size, step)
                 postTick()
                 val stepStart = SystemClock.elapsedRealtime()
-                val result = executeStep(step, index, listOf(workflow.id), 0)
-                val duration = SystemClock.elapsedRealtime() - stepStart
-                executions++
-                if (executions > MAX_STEP_EXECUTIONS) {
-                    failure = jumpLoopMessage()
-                    logStep(index, step, duration, "FAILED", failure)
-                    break@outer
+                // Per-step cycles: the step runs stepCycles times in
+                // sequence (clamped 1..99; 1 = today's behaviour).
+                // Pause/stop are honoured between repeats via
+                // waitIfPaused (already checked once above, re-checked
+                // here before every repeat); a Jump during a repeat
+                // skips the remaining repeats and applies below;
+                // Stopped/Failed end the repeats and propagate below.
+                val repeatCount = step.stepCycles.coerceIn(1, 99)
+                var result: StepResult = StepResult.Success
+                var repeatIndex = 0
+                while (repeatIndex < repeatCount) {
+                    if (!waitIfPaused()) {
+                        result = StepResult.Stopped
+                        break
+                    }
+                    result = executeStep(step, index, listOf(workflow.id), 0)
+                    executions++
+                    if (executions > MAX_STEP_EXECUTIONS) {
+                        failure = jumpLoopMessage()
+                        logStep(
+                            index, step,
+                            SystemClock.elapsedRealtime() - stepStart,
+                            "FAILED", failure
+                        )
+                        break@outer
+                    }
+                    repeatIndex++
+                    if (result !is StepResult.Success) break
                 }
+                val duration = SystemClock.elapsedRealtime() - stepStart
                 when (result) {
                     is StepResult.Success -> {
                         stepsDone++
@@ -614,17 +659,43 @@ object WorkflowRunner {
             StepType.OCR_READ -> executeRecognition(step, index, chain, depth)
             StepType.SCREENSHOT -> {
                 val path = service.takeScreenshotSave()
-                if (path != null) StepResult.Success
-                else StepResult.Failed(
-                    screenshotFailMessage(index, service)
-                )
+                if (path != null) {
+                    // Also open the screenshot preview (created by a
+                    // later builder). The save itself already succeeded,
+                    // so a missing preview activity — or any launch
+                    // failure — is swallowed and the step still succeeds.
+                    try {
+                        val ctx = appContext
+                        if (ctx != null) {
+                            val preview = Intent().apply {
+                                setClassName(
+                                    ctx.packageName,
+                                    "com.nimu.omeeeye.ui.ScreenshotPreviewActivity"
+                                )
+                                putExtra("path", path)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            ctx.startActivity(preview)
+                        }
+                    } catch (e: Exception) {
+                        // Preview is best-effort only; never fail the step.
+                    }
+                    StepResult.Success
+                } else {
+                    StepResult.Failed(screenshotFailMessage(index, service))
+                }
             }
             StepType.PASTE -> {
-                // No own source = the old clipboard-only behaviour.
-                // With a Library source, the row's value is placed on
-                // the clipboard first and then pasted with the exact
-                // same mechanism as before.
-                if (step.dataSourceId.isBlank()) {
+                // Library source wins when set (existing behaviour).
+                // Otherwise Typed text (step.text) is placed on the
+                // clipboard first and then pasted with the exact same
+                // mechanism; blank text + blank source is the old
+                // clipboard-only behaviour, byte for byte.
+                if (step.dataSourceId.isBlank() && step.text.isNotBlank()) {
+                    service.setClipboardText(step.text)
+                    if (service.pasteClipboard()) StepResult.Success
+                    else StepResult.Failed(failMessage(index, "Paste failed"))
+                } else if (step.dataSourceId.isBlank()) {
                     if (service.pasteClipboard()) StepResult.Success
                     else StepResult.Failed(failMessage(index, "Paste failed"))
                 } else {
@@ -668,12 +739,38 @@ object WorkflowRunner {
             StepType.AREA_CLICK -> {
                 val region = step.region()
                     ?: return StepResult.Failed(failMessage(index, "No area picked"))
-                val point = Point(
-                    Random.nextInt(region.left, region.right + 1),
-                    Random.nextInt(region.top, region.bottom + 1)
-                )
-                if (service.tap(point)) StepResult.Success
-                else StepResult.Failed(failMessage(index, "Area click failed"))
+                if (step.areaClickMode == "ALL") {
+                    // Grid mode: tap a grid across the region, 150 px
+                    // apart, at most 50 taps. The first failed tap fails
+                    // the step cleanly. Pause/stop are honoured between
+                    // steps (per the runner convention), not mid-grid.
+                    var taps = 0
+                    var gridFailed = false
+                    grid@ for (y in region.top..region.bottom step 150) {
+                        for (x in region.left..region.right step 150) {
+                            if (taps >= 50) break@grid
+                            if (!service.tap(Point(x, y))) {
+                                gridFailed = true
+                                break@grid
+                            }
+                            taps++
+                        }
+                    }
+                    if (gridFailed) {
+                        StepResult.Failed(failMessage(index, "Area click failed"))
+                    } else {
+                        StepResult.Success
+                    }
+                } else {
+                    // RANDOM (default, and any other value): exactly
+                    // today's single-random-tap behaviour.
+                    val point = Point(
+                        Random.nextInt(region.left, region.right + 1),
+                        Random.nextInt(region.top, region.bottom + 1)
+                    )
+                    if (service.tap(point)) StepResult.Success
+                    else StepResult.Failed(failMessage(index, "Area click failed"))
+                }
             }
             StepType.WAIT_RANDOM -> {
                 val min = step.waitMinMs.coerceAtLeast(0)
@@ -698,6 +795,61 @@ object WorkflowRunner {
                 }
             }
             StepType.NETWORK_GET -> executeNetworkGet(step, index)
+            StepType.SLIDE_LIST -> {
+                if (service.scrollList(step.slideDirection, step.slideCount)) {
+                    StepResult.Success
+                } else {
+                    StepResult.Failed(
+                        failMessage(
+                            index,
+                            stringOr(
+                                R.string.run_slide_no_list,
+                                "No scrollable list found"
+                            )
+                        )
+                    )
+                }
+            }
+            StepType.QS_TILE -> {
+                if (step.qsTileLabel.isBlank()) {
+                    StepResult.Failed(
+                        failMessage(
+                            index,
+                            stringOr(
+                                R.string.run_qs_tile_not_found,
+                                "Quick setting tile not found"
+                            )
+                        )
+                    )
+                } else if (service.openQuickSettingsAndTapTile(step.qsTileLabel)) {
+                    StepResult.Success
+                } else {
+                    StepResult.Failed(
+                        failMessage(
+                            index,
+                            stringOr(
+                                R.string.run_qs_tile_not_found,
+                                "Quick setting tile not found"
+                            )
+                        )
+                    )
+                }
+            }
+            StepType.POWER_DIALOG -> {
+                if (service.showPowerDialog()) {
+                    StepResult.Success
+                } else {
+                    StepResult.Failed(
+                        failMessage(
+                            index,
+                            stringOr(
+                                R.string.run_power_dialog_unavailable,
+                                "Power dialog is not available on this device"
+                            )
+                        )
+                    )
+                }
+            }
         }
     }
 
@@ -795,6 +947,21 @@ object WorkflowRunner {
             ?: return StepResult.Failed(
                 failMessage(index, "Accessibility service is not available")
             )
+        // Nesting guard: recognition steps nested inside recognition
+        // sub-actions (custom / retry / afterRetry) arrive here with an
+        // incremented depth via executeEmbedded. Deeper than the top
+        // level + 2 nested levels fails cleanly instead of recursing.
+        if (depth >= MAX_RECOGNITION_DEPTH) {
+            return StepResult.Failed(
+                failMessage(
+                    index,
+                    stringOr(
+                        R.string.run_recognition_too_deep,
+                        "Recognition nesting too deep"
+                    )
+                )
+            )
+        }
         val region = if (step.areaMode == com.nimu.omeeeye.model.AreaMode.REGION) {
             step.region()
         } else {
@@ -841,18 +1008,52 @@ object WorkflowRunner {
                     }
                 }
                 StepType.COLOR_RECOGNITION -> {
-                    val shot = service.takeScreenshotBitmap()
-                    if (shot == null) {
-                        DetectOutcome.HardFail(
-                            screenshotFailMessage(index, service)
+                    if (step.anchorX >= 0 && step.anchorY >= 0) {
+                        // Anchor mode: only the live pixel at the
+                        // picked anchor point is checked (pickColorAt
+                        // screenshots internally), against colorValue
+                        // within colorTolerance, per channel. No
+                        // region search runs in this mode.
+                        val live = service.pickColorAt(
+                            Point(step.anchorX, step.anchorY)
                         )
+                        if (live == null) {
+                            DetectOutcome.HardFail(
+                                screenshotFailMessage(index, service)
+                            )
+                        } else {
+                            val tr = (step.colorValue shr 16) and 0xFF
+                            val tg = (step.colorValue shr 8) and 0xFF
+                            val tb = step.colorValue and 0xFF
+                            val r = (live shr 16) and 0xFF
+                            val g = (live shr 8) and 0xFF
+                            val b = live and 0xFF
+                            val tol = step.colorTolerance
+                            if (kotlin.math.abs(r - tr) <= tol &&
+                                kotlin.math.abs(g - tg) <= tol &&
+                                kotlin.math.abs(b - tb) <= tol
+                            ) {
+                                DetectOutcome.Found(Point(step.anchorX, step.anchorY))
+                            } else {
+                                DetectOutcome.NotFound
+                            }
+                        }
                     } else {
-                        val point = service.findColorInBitmap(
-                            shot, step.colorValue, step.colorTolerance, region
-                        )
-                        shot.recycle()
-                        if (point != null) DetectOutcome.Found(point)
-                        else DetectOutcome.NotFound
+                        // No anchor: the old region-search behaviour,
+                        // unchanged.
+                        val shot = service.takeScreenshotBitmap()
+                        if (shot == null) {
+                            DetectOutcome.HardFail(
+                                screenshotFailMessage(index, service)
+                            )
+                        } else {
+                            val point = service.findColorInBitmap(
+                                shot, step.colorValue, step.colorTolerance, region
+                            )
+                            shot.recycle()
+                            if (point != null) DetectOutcome.Found(point)
+                            else DetectOutcome.NotFound
+                        }
                     }
                 }
                 StepType.OCR_READ -> {
@@ -996,7 +1197,9 @@ object WorkflowRunner {
     /**
      * Runs embedded sub-actions inline. A Jump inside a sub-action list
      * is ignored (sub-actions never redirect the parent run); Stopped
-     * and Failed propagate.
+     * and Failed propagate. Recognition steps inside the list run with
+     * depth + 1, so nesting past the top level + 2 nested levels fails
+     * inside executeRecognition with "Recognition nesting too deep".
      */
     private fun executeEmbedded(
         steps: List<Step>,
@@ -1135,6 +1338,9 @@ object WorkflowRunner {
             StepType.TYPE_TEXT -> step.text.take(30)
             StepType.BUTTON_RECOGNITION, StepType.OCR_READ -> step.matchText.take(30)
             StepType.TYPE_CODE -> step.snippetId.take(20)
+            StepType.SLIDE_LIST -> step.slideDirection
+            StepType.QS_TILE -> step.qsTileLabel.take(30)
+            // POWER_DIALOG needs no detail: its type name is the label.
             else -> ""
         }
         val label = if (detail.isBlank()) step.type.name else "${step.type.name}: $detail"

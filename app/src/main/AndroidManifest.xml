@@ -64,11 +64,41 @@
             android:name=".ui.RecognitionEditActivity"
             android:exported="false" />
 
+        <!-- Screenshot preview (Wave-1 contract: started with
+             FLAG_ACTIVITY_NEW_TASK + "path" extra by the runner). -->
+        <activity
+            android:name=".ui.ScreenshotPreviewActivity"
+            android:exported="false" />
+
+        <!-- Image share for the screenshot preview (FileProvider). -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.nimu.omeeeye.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <!-- Overlay pick/record service: picks and records OVER other
              apps via a system overlay window (the old translucent pick
              activities could only ever show this app's own screen). -->
         <service
             android:name=".ui.OverlayPickService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse" />
+
+        <!-- Button capture overlay ("All buttons") and gesture path
+             viewer: same foreground-service + overlay pattern as
+             OverlayPickService. -->
+        <service
+            android:name=".ui.ButtonCaptureService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse" />
+
+        <service
+            android:name=".ui.GesturePathService"
             android:exported="false"
             android:foregroundServiceType="specialUse" />
 

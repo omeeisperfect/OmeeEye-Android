@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Screenshots saved by AutomationService.takeScreenshotSave()
+         and stitched long screenshots: only this folder is shared. -->
+    <files-path name="screenshots" path="screenshots/" />
+</paths>
