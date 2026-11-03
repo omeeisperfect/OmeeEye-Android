@@ -274,6 +274,20 @@ class StepAdapter(
                     R.string.step_preview_wait_random, step.waitMinMs, step.waitMaxMs
                 )
             )
+            StepType.LOOP_ACTION -> {
+                val targetIndex = steps.indexOfFirst { it.id == step.loopTargetId }
+                lines.add(
+                    if (targetIndex >= 0) {
+                        context.getString(
+                            R.string.step_preview_loop,
+                            targetIndex + 1,
+                            step.loopCount.coerceIn(1, 99)
+                        )
+                    } else {
+                        context.getString(R.string.step_preview_loop_missing)
+                    }
+                )
+            }
             StepType.BUTTON_RECOGNITION, StepType.IMAGE_RECOGNITION,
             StepType.COLOR_RECOGNITION, StepType.OCR_READ -> {
                 if (step.matchText.isNotBlank()) {
@@ -335,6 +349,7 @@ class StepAdapter(
         StepType.SLIDE_LIST -> R.drawable.ic_step_slide
         StepType.QS_TILE -> R.drawable.ic_step_qs
         StepType.POWER_DIALOG -> R.drawable.ic_step_power
+        StepType.LOOP_ACTION -> R.drawable.ic_step_loop
     }
 
     private fun titleFor(context: android.content.Context, step: Step): String {
@@ -382,6 +397,7 @@ class StepAdapter(
             StepType.SLIDE_LIST -> context.getString(R.string.step_slide_list)
             StepType.QS_TILE -> context.getString(R.string.step_qs_tile)
             StepType.POWER_DIALOG -> context.getString(R.string.step_power_dialog)
+            StepType.LOOP_ACTION -> context.getString(R.string.step_loop)
         }
     }
 }

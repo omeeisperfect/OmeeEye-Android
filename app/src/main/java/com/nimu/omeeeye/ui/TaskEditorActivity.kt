@@ -24,6 +24,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -345,6 +346,10 @@ class TaskEditorActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Reference LIGHT theme for this screen only (local night
+        // mode, set before super.onCreate); the rest of the app's
+        // theme is untouched.
+        delegate.localNightMode = AppCompatDelegate.MODE_NIGHT_NO
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_task_editor)
 
@@ -783,6 +788,7 @@ class TaskEditorActivity : AppCompatActivity() {
                     StepType.SLIDE_LIST -> showSlideListDialog(reset, position)
                     StepType.QS_TILE -> showQsTileDialog(reset, position)
                     StepType.POWER_DIALOG -> showPowerDialogDialog(reset, position)
+                    StepType.LOOP_ACTION -> showLoopDialog(reset, position)
                     else -> replaceStep(position, reset)
                 }
             }
@@ -812,7 +818,9 @@ class TaskEditorActivity : AppCompatActivity() {
         afterRetrySteps = emptyList(), afterRetryJumpTarget = -1,
         waitMinMs = 0, waitMaxMs = 1000, intentUri = "", networkUrl = "",
         dataSourceId = "", dataColumn = "", areaClickMode = "RANDOM",
-        slideDirection = "DOWN", slideCount = 1, qsTileLabel = ""
+        slideDirection = "DOWN", slideCount = 1, qsTileLabel = "",
+        breakLoopOnSuccess = false, breakLoopOnFailure = false,
+        loopTargetId = "", loopCount = 1
     )
 
     // ---------- Add-step sheet ----------
@@ -865,6 +873,7 @@ class TaskEditorActivity : AppCompatActivity() {
             StepType.SLIDE_LIST -> showSlideListDialog(null, null)
             StepType.QS_TILE -> showQsTileDialog(null, null)
             StepType.POWER_DIALOG -> showPowerDialogDialog(null, null)
+            StepType.LOOP_ACTION -> showLoopDialog(null, null)
         }
     }
 
@@ -892,6 +901,7 @@ class TaskEditorActivity : AppCompatActivity() {
             StepType.INTENT_URI -> showUriDialog(step, position, false)
             StepType.NETWORK_GET -> showUriDialog(step, position, true)
             StepType.PASTE -> showPasteDialog(step, position)
+            StepType.LOOP_ACTION -> showLoopDialog(step, position)
             StepType.SCREENSHOT,
             StepType.VIBRATION,
             StepType.SOUND,
@@ -1056,6 +1066,10 @@ class TaskEditorActivity : AppCompatActivity() {
         val stepsJson = JSONArray()
         steps.forEach { stepsJson.put(WorkflowStore.stepToJson(it)) }
         intent.putExtra("workflow_steps_json", stepsJson.toString())
+        // Loop-action targets for recognition sub-actions: the same
+        // full step list (the recognition editor filters out its own
+        // enclosing step when offering targets).
+        intent.putExtra("loop_steps_json", stepsJson.toString())
         recogLauncher.launch(intent)
     }
 
@@ -1073,33 +1087,202 @@ class TaskEditorActivity : AppCompatActivity() {
         }
     }
 
-    /** WAIT_RANDOM: min/max in 100 ms steps. */
-    private fun showWaitRandomDialog(existing: Step?, position: Int?) {
+    /**
+     * Loop action (reference-workflow clone, "Copy action" dialog):
+     * pick an existing step of THIS workflow and set how many times
+     * it runs (1..99, default 2 for a new loop). The target is stored
+     * by step ID, so later inserts, deletes and drag-reorders cannot
+     * retarget it; the loop step itself is never offered (a step
+     * cannot repeat itself). No other step means a message, never an
+     * empty picker. Cancel changes nothing; a stored target that no
+     * longer exists pre-selects nothing, so OK without a fresh pick
+     * saves nothing. Replace mode keeps position, wait-after and
+     * cycles via the reset step, like every other dialog here.
+     */
+    private fun showLoopDialog(existing: Step?, position: Int?) {
+        val candidates = steps.withIndex()
+            .filter { (_, step) -> step.id != existing?.id }
+        if (candidates.isEmpty()) {
+            AlertDialog.Builder(this)
+                .setMessage(R.string.loop_no_steps)
+                .setPositiveButton(R.string.ok, null)
+                .show()
+            return
+        }
+        val density = resources.displayMetrics.density
+        val pad = (16 * density).toInt()
         val layout = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
-            val pad = (16 * resources.displayMetrics.density).toInt()
             setPadding(pad, pad, pad, pad)
         }
-        val minLabel = android.widget.TextView(this).apply {
-            text = getString(R.string.wait_min_title)
+        val targetGroup = android.widget.RadioGroup(this).apply {
+            orientation = android.widget.RadioGroup.VERTICAL
         }
-        val minPicker = NumberPicker(this).apply {
-            minValue = 0
-            maxValue = 300
-            value = ((existing?.waitMinMs ?: 0) / 100).toInt().coerceIn(0, 300)
+        candidates.forEach { (stepIndex, step) ->
+            targetGroup.addView(
+                android.widget.RadioButton(this).apply {
+                    text = loopTargetLabel(stepIndex, step)
+                    isChecked = step.id == existing?.loopTargetId
+                    tag = step.id
+                }
+            )
         }
-        val maxLabel = android.widget.TextView(this).apply {
-            text = getString(R.string.wait_max_title)
+        layout.addView(targetGroup)
+        layout.addView(
+            android.widget.TextView(this).apply {
+                text = getString(R.string.loop_times_title)
+                setPadding(0, pad, 0, 0)
+            }
+        )
+        val timesPicker = NumberPicker(this).apply {
+            minValue = 1
+            maxValue = 99
+            value = (existing?.loopCount ?: 2).coerceIn(1, 99)
         }
-        val maxPicker = NumberPicker(this).apply {
-            minValue = 0
-            maxValue = 300
-            value = ((existing?.waitMaxMs ?: 1000) / 100).toInt().coerceIn(0, 300)
+        layout.addView(timesPicker)
+        val cyclesPicker = addCyclesSection(
+            layout, existing?.stepCycles ?: 1
+        )
+        // OK is wired after show(): with no target selected it toasts
+        // "Pick a step first" and keeps the dialog open instead of
+        // silently dismissing with no change (QA Gate 3). Selection
+        // behaviour is unchanged, in both add and replace modes.
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.step_loop)
+            .setView(layout)
+            .setPositiveButton(R.string.ok, null)
+            .setNegativeButton(R.string.cancel, null)
+            .create()
+        dialog.show()
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val checkedId = targetGroup.checkedRadioButtonId
+            if (checkedId < 0) {
+                Toast.makeText(this, R.string.pick_step_first, Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            val targetId = targetGroup.findViewById<android.widget.RadioButton>(checkedId)
+                ?.tag as? String ?: run {
+                    Toast.makeText(this, R.string.pick_step_first, Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+            if (existing != null && position != null) {
+                replaceStep(
+                    position,
+                    existing.copy(
+                        loopTargetId = targetId,
+                        loopCount = timesPicker.value,
+                        stepCycles = cyclesPicker.value
+                    )
+                )
+            } else {
+                addStep(
+                    Step(
+                        id = WorkflowStore.newId(),
+                        type = StepType.LOOP_ACTION,
+                        loopTargetId = targetId,
+                        loopCount = timesPicker.value,
+                        waitAfterMs = DEFAULT_WAIT_AFTER_MS,
+                        stepCycles = cyclesPicker.value
+                    )
+                )
+            }
+            dialog.dismiss()
         }
-        layout.addView(minLabel)
-        layout.addView(minPicker)
-        layout.addView(maxLabel)
-        layout.addView(maxPicker)
+    }
+
+    /** "Step N: <type>" label for the loop-target picker. Numbers match
+     * the editor rows; the type name is the step's title string. */
+    private fun loopTargetLabel(index: Int, step: Step): String {
+        val title = when (step.type) {
+            StepType.TAP -> getString(R.string.step_tap)
+            StepType.SWIPE -> getString(R.string.step_swipe)
+            StepType.TYPE_TEXT -> getString(R.string.step_type_text)
+            StepType.WAIT -> getString(R.string.step_wait)
+            StepType.NAVIGATION -> getString(R.string.step_navigation)
+            StepType.LAUNCH_APP -> getString(R.string.step_launch_app)
+            StepType.SUB_TASK -> getString(R.string.step_sub_task)
+            StepType.TYPE_CODE -> getString(R.string.step_type_code)
+            StepType.TYPE_EXCEL_ROW -> getString(R.string.step_type_excel_row)
+            StepType.BUTTON_RECOGNITION -> getString(R.string.step_button_recognition)
+            StepType.IMAGE_RECOGNITION -> getString(R.string.step_image_recognition)
+            StepType.COLOR_RECOGNITION -> getString(R.string.step_color_recognition)
+            StepType.OCR_READ -> getString(R.string.step_ocr_read)
+            StepType.SCREENSHOT -> getString(R.string.step_screenshot)
+            StepType.PASTE -> getString(R.string.step_paste)
+            StepType.VIBRATION -> getString(R.string.step_vibration)
+            StepType.SOUND -> getString(R.string.step_sound)
+            StepType.SCREEN_OFF -> getString(R.string.step_screen_off)
+            StepType.AREA_CLICK -> getString(R.string.step_area_click)
+            StepType.WAIT_RANDOM -> getString(R.string.step_wait_random)
+            StepType.STOP_TASK -> getString(R.string.step_stop_task)
+            StepType.INTENT_URI -> getString(R.string.step_intent_uri)
+            StepType.NETWORK_GET -> getString(R.string.step_network_get)
+            StepType.SLIDE_LIST -> getString(R.string.step_slide_list)
+            StepType.QS_TILE -> getString(R.string.step_qs_tile)
+            StepType.POWER_DIALOG -> getString(R.string.step_power_dialog)
+            StepType.LOOP_ACTION -> getString(R.string.step_loop)
+        }
+        return "Step ${index + 1}: $title"
+    }
+
+    /**
+     * WAIT_RANDOM, reference dialog content: "Minimum value" + number
+     * + "Seconds", then "Maximum value" + number + "Seconds".
+     * Defaults 1 / 3 for a new step; an existing step converts its
+     * stored milliseconds back to whole seconds for display. Seconds
+     * display truncates (1500 ms shows as 1 s), so an unchanged bound
+     * keeps its exact stored milliseconds on OK — only a changed
+     * bound is stored as whole seconds, otherwise opening the dialog
+     * and tapping OK would silently corrupt the value (1500 -> 1000
+     * ms). CANCEL changes nothing. The cycles picker below is this
+     * editor's own addition and is unchanged.
+     */
+    private fun showWaitRandomDialog(existing: Step?, position: Int?) {
+        val density = resources.displayMetrics.density
+        val pad = (16 * density).toInt()
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, pad)
+        }
+        fun secondsRow(labelRes: Int, initialSeconds: Int): EditText {
+            val row = android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+            }
+            row.addView(
+                android.widget.TextView(this).apply {
+                    text = getString(labelRes)
+                    layoutParams = android.widget.LinearLayout.LayoutParams(
+                        0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                    )
+                }
+            )
+            val input = EditText(this).apply {
+                inputType = InputType.TYPE_CLASS_NUMBER
+                gravity = android.view.Gravity.CENTER
+                setText(initialSeconds.toString())
+                minWidth = (48 * density).toInt()
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            }
+            row.addView(input)
+            row.addView(
+                android.widget.TextView(this).apply {
+                    text = getString(R.string.wait_seconds)
+                    setPadding((8 * density).toInt(), 0, 0, 0)
+                }
+            )
+            layout.addView(row)
+            return input
+        }
+        val initialMinSec =
+            ((existing?.waitMinMs ?: 1000) / 1000).toInt().coerceIn(0, 3600)
+        val initialMaxSec =
+            ((existing?.waitMaxMs ?: 3000) / 1000).toInt().coerceIn(0, 3600)
+        val minInput = secondsRow(R.string.wait_min_label, initialMinSec)
+        val maxInput = secondsRow(R.string.wait_max_label, initialMaxSec)
         val cyclesPicker = addCyclesSection(
             layout, existing?.stepCycles ?: 1
         )
@@ -1107,8 +1290,23 @@ class TaskEditorActivity : AppCompatActivity() {
             .setTitle(R.string.step_wait_random)
             .setView(layout)
             .setPositiveButton(R.string.ok) { _, _ ->
-                val minMs = minPicker.value * 100L
-                var maxMs = maxPicker.value * 100L
+                val minSec = minInput.text.toString().toIntOrNull()
+                    ?.coerceIn(0, 3600) ?: 1
+                val maxSecRaw = maxInput.text.toString().toIntOrNull()
+                    ?.coerceIn(0, 3600) ?: 3
+                // Unchanged bounds keep their exact stored ms (see the
+                // KDoc above); changed bounds become whole seconds.
+                val minMs = if (existing != null && minSec == initialMinSec) {
+                    existing.waitMinMs
+                } else {
+                    minSec * 1000L
+                }
+                var maxMs = if (existing != null && maxSecRaw == initialMaxSec) {
+                    existing.waitMaxMs
+                } else {
+                    maxSecRaw * 1000L
+                }
+                // A raised minimum must not leave max below min.
                 if (maxMs < minMs) maxMs = minMs
                 if (existing != null && position != null) {
                     replaceStep(
@@ -1756,9 +1954,9 @@ class TaskEditorActivity : AppCompatActivity() {
             orientation = android.widget.RadioGroup.VERTICAL
         }
         listOf(
-            getString(R.string.nav_back) to NavKey.BACK,
-            getString(R.string.nav_home) to NavKey.HOME,
-            getString(R.string.nav_recents) to NavKey.RECENTS
+            getString(R.string.nav_action_back) to NavKey.BACK,
+            getString(R.string.nav_action_home) to NavKey.HOME,
+            getString(R.string.nav_action_recents) to NavKey.RECENTS
         ).forEach { (label, key) ->
             navGroup.addView(
                 android.widget.RadioButton(this).apply {
@@ -1773,7 +1971,7 @@ class TaskEditorActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setTitle(R.string.step_navigation)
             .setView(layout)
-            .setPositiveButton(R.string.ok) { _, _ ->
+            .setPositiveButton(R.string.editor_save) { _, _ ->
                 val checkedId = navGroup.checkedRadioButtonId
                 if (checkedId < 0) return@setPositiveButton
                 val navKey = navGroup.findViewById<android.widget.RadioButton>(checkedId)

@@ -15,13 +15,14 @@ import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.NumberPicker
+import android.widget.RadioButton
 import android.widget.RadioGroup
-import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
 import com.nimu.omeeeye.R
 import com.nimu.omeeeye.data.CodeLibraryStore
 import com.nimu.omeeeye.data.DataFileStore
@@ -43,10 +44,12 @@ import org.json.JSONObject
 import java.io.File
 
 /**
- * Editor for ONE recognition step (Button / Image / Color / OCR), in
- * this app's own UI identity. Sections in order: Identification, actions
- * after successful recognition, retry, actions after the retry, then
- * Save / Close.
+ * Editor for ONE recognition step (Button / Image / Color / OCR),
+ * reference structure: top card (Judgment method + Recognition area
+ * dropdown pills, button/image/color value rows), actions after
+ * successful recognition (Perform click / Custom actions / Jump &
+ * Continue cards), retry, actions after the retry, Cycles, then
+ * SAVE / CLOSE green pills (CLOSE bottom-right).
  *
  * Intent extras in:
  * - "step_json" (String, optional): the step being edited, serialised
@@ -111,6 +114,24 @@ class RecognitionEditActivity : AppCompatActivity() {
     private val hasJumpTargets: Boolean
         get() = jumpChoices.isNotEmpty()
 
+    // Loop-action target source (reference-workflow clone): same
+    // (original workflow index, step) shape as jumpChoices, from the
+    // "loop_steps_json" intent extra (all top-level steps, in order).
+    // When the extra is absent, the jump choices are the fallback
+    // (they already exclude the edited step). Nested editors forward
+    // their parent's list, so a loop sub-action always targets a
+    // top-level step. [loopExcludeIds] holds enclosing recognition
+    // steps that must never be loop targets (a step looping its own
+    // enclosing recognition step would only fail on the depth guard).
+    private val loopChoices: MutableList<Pair<Int, Step>> = mutableListOf()
+    private val loopExcludeIds: MutableSet<String> = mutableSetOf()
+
+    /** Loop targets, minus this editor's own step and excluded enclosing steps. */
+    private fun loopTargetChoices(): List<Pair<Int, Step>> =
+        loopChoices.filter { (_, step) ->
+            step.id != originalStep.id && step.id !in loopExcludeIds
+        }
+
     // ---- Mutable editor state (read from the views again at save time
     // for text / picker values; these hold what the views cannot) ----
     private var matchMode: MatchMode = MatchMode.EXACT
@@ -144,12 +165,17 @@ class RecognitionEditActivity : AppCompatActivity() {
     // ---- Views ----
     private lateinit var btnJudgment: Button
     private lateinit var judgmentLabel: TextView
+    private lateinit var btnJudgmentHelp: View
     private lateinit var btnArea: Button
     private lateinit var btnPickRegion: Button
     private lateinit var textRegionStatus: TextView
-    private lateinit var editButtonText: EditText
-    private lateinit var editButtonId: EditText
-    private lateinit var editButtonDesc: EditText
+    // Button text / ID / description are value TextViews edited
+    // through their pencil buttons (reference top card), not inline
+    // EditTexts. Every read/write site uses .text / .setText, which
+    // TextView provides, so no save/load logic changes.
+    private lateinit var editButtonText: TextView
+    private lateinit var editButtonId: TextView
+    private lateinit var editButtonDesc: TextView
     private lateinit var imgTemplatePreview: ImageView
     private lateinit var textTemplateStatus: TextView
     private lateinit var textImageRegionStatus: TextView
@@ -160,12 +186,18 @@ class RecognitionEditActivity : AppCompatActivity() {
     private lateinit var textOcrRegionStatus: TextView
     private lateinit var editOcrMatch: EditText
     private lateinit var editOcrVariable: EditText
-    private lateinit var radioSuccessGroup: RadioGroup
+    // One RadioButton per mode card (no RadioGroup: radios live in
+    // separate cards, so exclusivity is managed in code via
+    // setSuccessMode / setAfterRetryMode).
+    private lateinit var radioSuccessClick: RadioButton
+    private lateinit var radioSuccessCustom: RadioButton
+    private lateinit var radioSuccessJump: RadioButton
     private lateinit var successClickGroup: View
     private lateinit var pickerClickCount: NumberPicker
     private lateinit var textClickCountValue: TextView
+    private lateinit var textClickCountBadge: TextView
     private lateinit var successActionsGroup: View
-    private lateinit var switchClickFirst: Switch
+    private lateinit var switchClickFirst: CheckBox
     private lateinit var listSuccessActions: LinearLayout
     private lateinit var textSuccessEmpty: TextView
     private lateinit var successJumpGroup: View
@@ -176,12 +208,16 @@ class RecognitionEditActivity : AppCompatActivity() {
     private lateinit var textRetryCountValue: TextView
     private lateinit var pickerRetryDelay: NumberPicker
     private lateinit var textRetryDelayValue: TextView
-    private lateinit var radioAfterGroup: RadioGroup
+    private lateinit var radioAfterIgnore: RadioButton
+    private lateinit var radioAfterCustom: RadioButton
+    private lateinit var radioAfterJump: RadioButton
     private lateinit var afterActionsGroup: View
     private lateinit var listAfterActions: LinearLayout
     private lateinit var textAfterEmpty: TextView
     private lateinit var afterJumpGroup: View
     private lateinit var textAfterJumpStatus: TextView
+    private lateinit var checkBreakLoopSuccess: CheckBox
+    private lateinit var checkBreakLoopFailure: CheckBox
     private lateinit var btnSave: Button
     // Programmatic sections (no layout-file change): cycles picker
     // inserted before the Save / Close row, anchor controls appended
@@ -468,6 +504,11 @@ class RecognitionEditActivity : AppCompatActivity() {
     // ---------- Lifecycle ----------
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Reference LIGHT theme for this screen only: local night
+        // mode, set before super.onCreate, so night-qualified
+        // resources resolve to their day values here without
+        // changing the rest of the app's theme.
+        delegate.localNightMode = AppCompatDelegate.MODE_NIGHT_NO
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_recognition_edit)
 
@@ -564,11 +605,34 @@ class RecognitionEditActivity : AppCompatActivity() {
         if (afterRetryJumpTarget !in jumpChoices.map { it.first }) {
             afterRetryJumpTarget = -1
         }
+
+        // Loop-action targets: the explicit extra first, else the jump
+        // choices (same workflow steps, self already excluded).
+        val loopJson = intent.getStringExtra("loop_steps_json")
+        if (!loopJson.isNullOrBlank()) {
+            try {
+                val arr = JSONArray(loopJson)
+                for (i in 0 until arr.length()) {
+                    loopChoices.add(i to WorkflowStore.stepFromJson(arr.getJSONObject(i)))
+                }
+            } catch (e: Exception) {
+                // A corrupt list just means no loop targets, handled below.
+            }
+        }
+        if (loopChoices.isEmpty()) {
+            loopChoices.addAll(jumpChoices)
+        }
+        intent.getStringExtra("loop_exclude_ids")
+            ?.split(",")
+            ?.map { it.trim() }
+            ?.filter { it.isNotEmpty() }
+            ?.let { loopExcludeIds.addAll(it) }
     }
 
     private fun bindViews() {
         btnJudgment = findViewById(R.id.btn_judgment)
         judgmentLabel = findViewById(R.id.rec_judgment_label)
+        btnJudgmentHelp = findViewById(R.id.btn_judgment_help)
         btnArea = findViewById(R.id.btn_area)
         btnPickRegion = findViewById(R.id.btn_pick_region)
         textRegionStatus = findViewById(R.id.text_region_status)
@@ -585,10 +649,13 @@ class RecognitionEditActivity : AppCompatActivity() {
         textOcrRegionStatus = findViewById(R.id.text_ocr_region_status)
         editOcrMatch = findViewById(R.id.edit_ocr_match)
         editOcrVariable = findViewById(R.id.edit_ocr_variable)
-        radioSuccessGroup = findViewById(R.id.radio_success_group)
+        radioSuccessClick = findViewById(R.id.radio_success_click)
+        radioSuccessCustom = findViewById(R.id.radio_success_custom)
+        radioSuccessJump = findViewById(R.id.radio_success_jump)
         successClickGroup = findViewById(R.id.success_click_group)
         pickerClickCount = findViewById(R.id.picker_click_count)
         textClickCountValue = findViewById(R.id.text_click_count_value)
+        textClickCountBadge = findViewById(R.id.text_click_count_badge)
         successActionsGroup = findViewById(R.id.success_actions_group)
         switchClickFirst = findViewById(R.id.switch_click_first)
         listSuccessActions = findViewById(R.id.list_success_actions)
@@ -601,12 +668,16 @@ class RecognitionEditActivity : AppCompatActivity() {
         textRetryCountValue = findViewById(R.id.text_retry_count_value)
         pickerRetryDelay = findViewById(R.id.picker_retry_delay)
         textRetryDelayValue = findViewById(R.id.text_retry_delay_value)
-        radioAfterGroup = findViewById(R.id.radio_after_group)
+        radioAfterIgnore = findViewById(R.id.radio_after_ignore)
+        radioAfterCustom = findViewById(R.id.radio_after_custom)
+        radioAfterJump = findViewById(R.id.radio_after_jump)
         afterActionsGroup = findViewById(R.id.after_actions_group)
         listAfterActions = findViewById(R.id.list_after_actions)
         textAfterEmpty = findViewById(R.id.text_after_empty)
         afterJumpGroup = findViewById(R.id.after_jump_group)
         textAfterJumpStatus = findViewById(R.id.text_after_jump_status)
+        checkBreakLoopSuccess = findViewById(R.id.check_break_loop_success)
+        checkBreakLoopFailure = findViewById(R.id.check_break_loop_failure)
         btnSave = findViewById(R.id.btn_rec_save)
         pickerCycles = findViewById(R.id.picker_cycles)
     }
@@ -993,6 +1064,7 @@ class RecognitionEditActivity : AppCompatActivity() {
             stepType == StepType.OCR_READ
         judgmentLabel.visibility = if (judgmentVisible) View.VISIBLE else View.GONE
         btnJudgment.visibility = if (judgmentVisible) View.VISIBLE else View.GONE
+        btnJudgmentHelp.visibility = if (judgmentVisible) View.VISIBLE else View.GONE
     }
 
     private fun loadStateIntoViews() {
@@ -1028,6 +1100,7 @@ class RecognitionEditActivity : AppCompatActivity() {
 
         pickerClickCount.setOnValueChangedListener { _, _, newVal ->
             textClickCountValue.text = newVal.toString()
+            textClickCountBadge.text = "x$newVal"
         }
         pickerTolerance.setOnValueChangedListener { _, _, newVal ->
             textToleranceValue.text = newVal.toString()
@@ -1040,40 +1113,92 @@ class RecognitionEditActivity : AppCompatActivity() {
         }
 
         switchClickFirst.isChecked = originalStep.clickFirst
+        checkBreakLoopSuccess.isChecked = originalStep.breakLoopOnSuccess
+        checkBreakLoopFailure.isChecked = originalStep.breakLoopOnFailure
 
-        when (successMode) {
-            SuccessMode.CLICK -> radioSuccessGroup.check(R.id.radio_success_click)
-            SuccessMode.CUSTOM -> radioSuccessGroup.check(R.id.radio_success_custom)
-            SuccessMode.JUMP -> radioSuccessGroup.check(R.id.radio_success_jump)
-        }
-        when (afterRetryMode) {
-            AfterRetryMode.IGNORE -> radioAfterGroup.check(R.id.radio_after_ignore)
-            AfterRetryMode.CUSTOM -> radioAfterGroup.check(R.id.radio_after_custom)
-            AfterRetryMode.JUMP -> radioAfterGroup.check(R.id.radio_after_jump)
-        }
-        radioSuccessGroup.setOnCheckedChangeListener { _, checkedId ->
-            successMode = when (checkedId) {
-                R.id.radio_success_custom -> SuccessMode.CUSTOM
-                R.id.radio_success_jump -> SuccessMode.JUMP
-                else -> SuccessMode.CLICK
-            }
-            refreshSuccessVisibility()
-            refreshSaveEnabled()
-        }
-        radioAfterGroup.setOnCheckedChangeListener { _, checkedId ->
-            afterRetryMode = when (checkedId) {
-                R.id.radio_after_custom -> AfterRetryMode.CUSTOM
-                R.id.radio_after_jump -> AfterRetryMode.JUMP
-                else -> AfterRetryMode.IGNORE
-            }
-            refreshAfterVisibility()
-            refreshSaveEnabled()
-        }
+        // Initial radio states, then click listeners (tapping a card
+        // or its radio selects that mode; see wireButtons for cards).
+        radioSuccessClick.setOnClickListener { setSuccessMode(SuccessMode.CLICK) }
+        radioSuccessCustom.setOnClickListener { setSuccessMode(SuccessMode.CUSTOM) }
+        radioSuccessJump.setOnClickListener { setSuccessMode(SuccessMode.JUMP) }
+        radioAfterIgnore.setOnClickListener { setAfterRetryMode(AfterRetryMode.IGNORE) }
+        radioAfterCustom.setOnClickListener { setAfterRetryMode(AfterRetryMode.CUSTOM) }
+        radioAfterJump.setOnClickListener { setAfterRetryMode(AfterRetryMode.JUMP) }
+        setSuccessMode(successMode)
+        setAfterRetryMode(afterRetryMode)
+    }
+
+    /** Mode-card exclusivity, replacing the old RadioGroups. */
+    private fun setSuccessMode(mode: SuccessMode) {
+        successMode = mode
+        radioSuccessClick.isChecked = mode == SuccessMode.CLICK
+        radioSuccessCustom.isChecked = mode == SuccessMode.CUSTOM
+        radioSuccessJump.isChecked = mode == SuccessMode.JUMP
+        refreshSuccessVisibility()
+        refreshSaveEnabled()
+    }
+
+    private fun setAfterRetryMode(mode: AfterRetryMode) {
+        afterRetryMode = mode
+        radioAfterIgnore.isChecked = mode == AfterRetryMode.IGNORE
+        radioAfterCustom.isChecked = mode == AfterRetryMode.CUSTOM
+        radioAfterJump.isChecked = mode == AfterRetryMode.JUMP
+        refreshAfterVisibility()
+        refreshSaveEnabled()
     }
 
     private fun wireButtons() {
         btnJudgment.setOnClickListener { showJudgmentDialog() }
+        btnJudgmentHelp.setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle(R.string.rec_judgment_label)
+                .setMessage(R.string.rec_judgment_help)
+                .setPositiveButton(R.string.ok, null)
+                .show()
+        }
         btnArea.setOnClickListener { showAreaDialog() }
+        findViewById<View>(R.id.btn_area_help).setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle(R.string.rec_area_label)
+                .setMessage(R.string.rec_area_help)
+                .setPositiveButton(R.string.ok, null)
+                .show()
+        }
+        // Button value pencils: each opens a small text edit dialog
+        // for that value (the value rows themselves are not editable).
+        findViewById<View>(R.id.btn_edit_button_text).setOnClickListener {
+            showButtonValueEditDialog(editButtonText)
+        }
+        findViewById<View>(R.id.btn_edit_button_id).setOnClickListener {
+            showButtonValueEditDialog(editButtonId)
+        }
+        findViewById<View>(R.id.btn_edit_button_desc).setOnClickListener {
+            showButtonValueEditDialog(editButtonDesc)
+        }
+        // Mode cards: tapping a card selects its mode.
+        findViewById<View>(R.id.card_success_click).setOnClickListener {
+            setSuccessMode(SuccessMode.CLICK)
+        }
+        findViewById<View>(R.id.card_success_custom).setOnClickListener {
+            setSuccessMode(SuccessMode.CUSTOM)
+        }
+        findViewById<View>(R.id.card_success_jump).setOnClickListener {
+            setSuccessMode(SuccessMode.JUMP)
+        }
+        findViewById<View>(R.id.card_after_ignore).setOnClickListener {
+            setAfterRetryMode(AfterRetryMode.IGNORE)
+        }
+        findViewById<View>(R.id.card_after_custom).setOnClickListener {
+            setAfterRetryMode(AfterRetryMode.CUSTOM)
+        }
+        findViewById<View>(R.id.card_after_jump).setOnClickListener {
+            setAfterRetryMode(AfterRetryMode.JUMP)
+        }
+        // Perform-click pencil: click-count picker dialog (the inline
+        // NumberPicker below stays as the second way to change it).
+        findViewById<View>(R.id.btn_edit_click_count).setOnClickListener {
+            showClickCountDialog()
+        }
         btnPickRegion.setOnClickListener { launchPickRegion("area") }
         findViewById<Button>(R.id.btn_capture_template).setOnClickListener {
             launchPickRegion("template")
@@ -1142,14 +1267,15 @@ class RecognitionEditActivity : AppCompatActivity() {
     }
 
     private fun refreshJudgmentButton() {
-        btnJudgment.text = judgmentLabel(matchMode)
+        // Dropdown pill: value + arrow glyph.
+        btnJudgment.text = judgmentLabel(matchMode) + " \u25BE"
     }
 
     private fun refreshAreaViews() {
         btnArea.text = when (areaMode) {
             AreaMode.FULLSCREEN -> getString(R.string.rec_area_fullscreen)
             AreaMode.REGION -> getString(R.string.rec_area_region)
-        }
+        } + " \u25BE"
         // The on-screen pick button is always visible: tapping it while
         // the area is Fullscreen switches to Region first (see
         // launchPickRegion). Hiding it left new Button steps with no
@@ -1203,6 +1329,7 @@ class RecognitionEditActivity : AppCompatActivity() {
         }
         textToleranceValue.text = pickerTolerance.value.toString()
         textClickCountValue.text = pickerClickCount.value.toString()
+        textClickCountBadge.text = "x" + pickerClickCount.value.toString()
         textRetryCountValue.text = pickerRetryCount.value.toString()
         textRetryDelayValue.text = (pickerRetryDelay.value * 100).toString() + " ms"
     }
@@ -1218,10 +1345,9 @@ class RecognitionEditActivity : AppCompatActivity() {
                 View.GONE
             }
         // The click-first switch shows in Custom mode and in Jump &
-        // Continue mode (reference flow). Runner note, semantics
-        // unchanged: the runner taps first only for Custom mode; a
-        // click-first value saved under Jump mode is ignored at run
-        // time until the runner is changed to honour it there.
+        // Continue mode (reference flow). The runner honours it in
+        // both modes: tap first, then the custom actions / the jump
+        // (see WorkflowRunner.executeRecognition).
         switchClickFirst.visibility =
             if (successMode == SuccessMode.CUSTOM ||
                 successMode == SuccessMode.JUMP
@@ -1530,6 +1656,48 @@ class RecognitionEditActivity : AppCompatActivity() {
 
     // ---------- Dialogs ----------
 
+    /**
+     * Pencil edit for one button value row (text / ID / description).
+     * OK writes the typed value into the row and refreshes the
+     * captured-details summary; Cancel changes nothing.
+     */
+    private fun showButtonValueEditDialog(valueView: TextView) {
+        val input = EditText(this).apply {
+            setText(valueView.text.toString())
+            inputType = InputType.TYPE_CLASS_TEXT
+            val pad = (16 * resources.displayMetrics.density).toInt()
+            setPadding(pad, pad, pad, pad)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.rec_edit_value)
+            .setView(input)
+            .setPositiveButton(R.string.ok) { _, _ ->
+                valueView.text = input.text.toString()
+                refreshButtonDetails()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /** Click-count picker behind the Perform-click card's pencil. */
+    private fun showClickCountDialog() {
+        val picker = NumberPicker(this).apply {
+            minValue = 1
+            maxValue = 10
+            value = pickerClickCount.value.coerceIn(1, 10)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.rec_click_count_label)
+            .setView(picker)
+            .setPositiveButton(R.string.ok) { _, _ ->
+                pickerClickCount.value = picker.value
+                textClickCountValue.text = picker.value.toString()
+                textClickCountBadge.text = "x" + picker.value.toString()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
     private fun showJudgmentDialog() {
         val labels = arrayOf(
             getString(R.string.add_judgment_same),
@@ -1585,22 +1753,33 @@ class RecognitionEditActivity : AppCompatActivity() {
         }.toTypedArray()
         val current = if (isAfterRetry) afterRetryJumpTarget else jumpTarget
         var selected = jumpChoices.indexOfFirst { it.first == current }
-        AlertDialog.Builder(this)
+        // OK is wired after show(): with nothing selected it toasts
+        // "Pick a step first" and keeps the dialog open instead of
+        // silently dismissing with no change (QA Gate 3). A valid
+        // current target still pre-selects, so this path is only
+        // reachable when no target was previously set.
+        val dialog = AlertDialog.Builder(this)
             .setTitle(R.string.rec_jump_target_dialog)
             .setSingleChoiceItems(labels, selected) { _, which -> selected = which }
-            .setPositiveButton(R.string.ok) { _, _ ->
-                if (selected < 0) return@setPositiveButton
-                val target = jumpChoices[selected].first
-                if (isAfterRetry) {
-                    afterRetryJumpTarget = target
-                } else {
-                    jumpTarget = target
-                }
-                refreshJumpStatuses()
-                refreshSaveEnabled()
-            }
+            .setPositiveButton(R.string.ok, null)
             .setNegativeButton(R.string.cancel, null)
-            .show()
+            .create()
+        dialog.show()
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            if (selected < 0) {
+                Toast.makeText(this, R.string.pick_step_first, Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            val target = jumpChoices[selected].first
+            if (isAfterRetry) {
+                afterRetryJumpTarget = target
+            } else {
+                jumpTarget = target
+            }
+            refreshJumpStatuses()
+            refreshSaveEnabled()
+            dialog.dismiss()
+        }
     }
 
     // ---------- Sub-action lists ----------
@@ -1650,13 +1829,20 @@ class RecognitionEditActivity : AppCompatActivity() {
             val row = inflater.inflate(R.layout.item_sub_action_row, container, false)
             row.findViewById<TextView>(R.id.sub_action_title).text =
                 subActionSummary(step)
-            // Tapping a row reopens its configuration dialog.
-            row.setOnClickListener {
+            row.findViewById<ImageView>(R.id.sub_action_icon)
+                .setImageResource(subActionIcon(step.type))
+            // Tapping a row (or its list icon) reopens its
+            // configuration dialog — the row's picker.
+            val editThis = {
                 if (index in list.indices) {
                     editSubAction(listKey, index)
                 }
             }
-            row.findViewById<Button>(R.id.sub_action_delete).setOnClickListener {
+            row.setOnClickListener { editThis() }
+            row.findViewById<View>(R.id.sub_action_list).setOnClickListener {
+                editThis()
+            }
+            row.findViewById<View>(R.id.sub_action_delete).setOnClickListener {
                 if (index in list.indices) {
                     list.removeAt(index)
                     renderSubLists()
@@ -1664,6 +1850,37 @@ class RecognitionEditActivity : AppCompatActivity() {
             }
             container.addView(row)
         }
+    }
+
+    /** Round row icon per sub-action type (same icons as the editor). */
+    private fun subActionIcon(type: StepType): Int = when (type) {
+        StepType.TAP -> R.drawable.ic_step_tap
+        StepType.SWIPE -> R.drawable.ic_step_swipe
+        StepType.TYPE_TEXT -> R.drawable.ic_step_typetext
+        StepType.WAIT -> R.drawable.ic_step_wait
+        StepType.NAVIGATION -> R.drawable.ic_step_nav
+        StepType.LAUNCH_APP -> R.drawable.ic_step_launch
+        StepType.SUB_TASK -> R.drawable.ic_step_subtask
+        StepType.TYPE_CODE -> R.drawable.ic_step_code
+        StepType.TYPE_EXCEL_ROW -> R.drawable.ic_step_excel
+        StepType.BUTTON_RECOGNITION -> R.drawable.ic_step_button
+        StepType.IMAGE_RECOGNITION -> R.drawable.ic_step_image
+        StepType.COLOR_RECOGNITION -> R.drawable.ic_step_color
+        StepType.OCR_READ -> R.drawable.ic_step_ocr
+        StepType.SCREENSHOT -> R.drawable.ic_step_screenshot
+        StepType.PASTE -> R.drawable.ic_step_paste
+        StepType.VIBRATION -> R.drawable.ic_step_vibration
+        StepType.SOUND -> R.drawable.ic_step_sound
+        StepType.SCREEN_OFF -> R.drawable.ic_step_screenoff
+        StepType.AREA_CLICK -> R.drawable.ic_step_area
+        StepType.WAIT_RANDOM -> R.drawable.ic_step_waitrandom
+        StepType.STOP_TASK -> R.drawable.ic_step_stop
+        StepType.INTENT_URI -> R.drawable.ic_step_intent
+        StepType.NETWORK_GET -> R.drawable.ic_step_network
+        StepType.SLIDE_LIST -> R.drawable.ic_step_slide
+        StepType.QS_TILE -> R.drawable.ic_step_qs
+        StepType.POWER_DIALOG -> R.drawable.ic_step_power
+        StepType.LOOP_ACTION -> R.drawable.ic_step_loop
     }
 
     private fun subActionSummary(step: Step): String = when (step.type) {
@@ -1741,6 +1958,7 @@ class RecognitionEditActivity : AppCompatActivity() {
             StepType.NETWORK_GET -> showSubUriDialog(listKey, existing, index, true)
             StepType.SLIDE_LIST -> showSubSlideDialog(listKey, existing, index)
             StepType.QS_TILE -> showSubQsDialog(listKey, existing, index)
+            StepType.LOOP_ACTION -> showSubLoopDialog(listKey, existing, index)
             StepType.SCREENSHOT,
             StepType.VIBRATION,
             StepType.SOUND,
@@ -1784,7 +2002,110 @@ class RecognitionEditActivity : AppCompatActivity() {
         // jumps there), so the nested editor gets an empty list and its
         // Jump modes stay safely unusable.
         intent.putExtra("workflow_steps_json", "[]")
+        // Loop targets ARE forwarded, unlike jumps: a loop sub-action
+        // resolves against the top-level list at run time, so the
+        // nested editor needs that list. The enclosing steps are
+        // forwarded as exclusions (this editor's own step plus any
+        // exclusion it inherited), so a loop can never target an
+        // enclosing recognition step.
+        val loopStepsJson = JSONArray()
+        val loopSource = if (loopChoices.isNotEmpty()) loopChoices else jumpChoices
+        loopSource.sortedBy { it.first }.forEach { (_, step) ->
+            loopStepsJson.put(WorkflowStore.stepToJson(step))
+        }
+        intent.putExtra("loop_steps_json", loopStepsJson.toString())
+        val exclude = (loopExcludeIds + originalStep.id).joinToString(",")
+        intent.putExtra("loop_exclude_ids", exclude)
         subRecogLauncher.launch(intent)
+    }
+
+    /**
+     * Loop-action sub-action (reference-workflow clone): pick an
+     * existing top-level step from [loopTargetChoices] and set the
+     * loop times (1..99, default 2 for a new loop). No targets means
+     * a message, never an empty picker. Cancel adds nothing; a stored
+     * target that no longer exists pre-selects nothing, so OK without
+     * a fresh pick saves nothing (a dangling target is never written
+     * back). The runner resolves the target by id at run time.
+     */
+    private fun showSubLoopDialog(listKey: String, existing: Step?, index: Int) {
+        val candidates = loopTargetChoices()
+        if (candidates.isEmpty()) {
+            AlertDialog.Builder(this)
+                .setMessage(R.string.loop_no_steps)
+                .setPositiveButton(R.string.ok, null)
+                .show()
+            return
+        }
+        val density = resources.displayMetrics.density
+        val pad = (16 * density).toInt()
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, pad)
+        }
+        val targetGroup = RadioGroup(this).apply {
+            orientation = RadioGroup.VERTICAL
+        }
+        candidates.forEach { (stepIndex, step) ->
+            targetGroup.addView(
+                android.widget.RadioButton(this).apply {
+                    text = "Step ${stepIndex + 1}: ${displayName(step.type)}"
+                    isChecked = step.id == existing?.loopTargetId
+                    tag = step.id
+                }
+            )
+        }
+        layout.addView(targetGroup)
+        layout.addView(
+            TextView(this).apply {
+                text = getString(R.string.loop_times_title)
+                setPadding(0, pad, 0, 0)
+            }
+        )
+        val timesPicker = NumberPicker(this).apply {
+            minValue = 1
+            maxValue = 99
+            value = (existing?.loopCount ?: 2).coerceIn(1, 99)
+        }
+        layout.addView(timesPicker)
+        // OK is wired after show(): with no target selected it toasts
+        // "Pick a step first" and keeps the dialog open instead of
+        // silently dismissing with no change (QA Gate 3). Selection
+        // behaviour is unchanged, in both add and replace modes.
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.step_loop)
+            .setView(layout)
+            .setPositiveButton(R.string.ok, null)
+            .setNegativeButton(R.string.cancel, null)
+            .create()
+        dialog.show()
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val checkedId = targetGroup.checkedRadioButtonId
+            if (checkedId < 0) {
+                Toast.makeText(this, R.string.pick_step_first, Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            val targetId = targetGroup.findViewById<android.widget.RadioButton>(checkedId)
+                ?.tag as? String ?: run {
+                    Toast.makeText(this, R.string.pick_step_first, Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+            val old = subActionList(listKey).getOrNull(index)
+            putSubAction(
+                listKey,
+                (old ?: Step(
+                    id = WorkflowStore.newId(),
+                    type = StepType.LOOP_ACTION,
+                    waitAfterMs = WAIT_AFTER_MS
+                )).copy(
+                    type = StepType.LOOP_ACTION,
+                    loopTargetId = targetId,
+                    loopCount = timesPicker.value
+                ),
+                index
+            )
+            dialog.dismiss()
+        }
     }
 
     private fun showSubSwipeDialog(listKey: String, existing: Step?, index: Int) {
@@ -2154,40 +2475,86 @@ class RecognitionEditActivity : AppCompatActivity() {
             .show()
     }
 
+    /**
+     * Sub-action WAIT_RANDOM, same reference content as the main
+     * editor: "Minimum value" + number + "Seconds", "Maximum value"
+     * + number + "Seconds", defaults 1 / 3.
+     *
+     * Seconds display truncates stored milliseconds (1500 ms shows
+     * as 1 s), so an unchanged value must NOT be rewritten as
+     * seconds * 1000 on OK — that would silently corrupt the stored
+     * value (1500 -> 1000 ms). A bound whose entered seconds equal
+     * its displayed seconds keeps its exact stored milliseconds;
+     * only a changed bound is stored as whole seconds.
+     */
     private fun showSubWaitRandomDialog(listKey: String, existing: Step?, index: Int) {
+        val density = resources.displayMetrics.density
+        val pad = (16 * density).toInt()
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            val pad = (16 * resources.displayMetrics.density).toInt()
             setPadding(pad, pad, pad, pad)
         }
-        layout.addView(
-            TextView(this).apply {
-                text = getString(R.string.wait_min_title)
+        fun secondsRow(labelRes: Int, initialSeconds: Int): EditText {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
             }
-        )
-        val minPicker = NumberPicker(this).apply {
-            minValue = 0
-            maxValue = MAX_PICKER_100MS
-            value = ((existing?.waitMinMs ?: 0) / 100).toInt().coerceIn(0, MAX_PICKER_100MS)
-        }
-        layout.addView(minPicker)
-        layout.addView(
-            TextView(this).apply {
-                text = getString(R.string.wait_max_title)
+            row.addView(
+                TextView(this).apply {
+                    text = getString(labelRes)
+                    layoutParams = LinearLayout.LayoutParams(
+                        0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                    )
+                }
+            )
+            val input = EditText(this).apply {
+                inputType = InputType.TYPE_CLASS_NUMBER
+                gravity = android.view.Gravity.CENTER
+                setText(initialSeconds.toString())
+                minWidth = (48 * density).toInt()
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
             }
-        )
-        val maxPicker = NumberPicker(this).apply {
-            minValue = 0
-            maxValue = MAX_PICKER_100MS
-            value = ((existing?.waitMaxMs ?: 1000) / 100).toInt().coerceIn(0, MAX_PICKER_100MS)
+            row.addView(input)
+            row.addView(
+                TextView(this).apply {
+                    text = getString(R.string.wait_seconds)
+                    setPadding((8 * density).toInt(), 0, 0, 0)
+                }
+            )
+            layout.addView(row)
+            return input
         }
-        layout.addView(maxPicker)
+        val initialMinSec =
+            ((existing?.waitMinMs ?: 1000) / 1000).toInt().coerceIn(0, 3600)
+        val initialMaxSec =
+            ((existing?.waitMaxMs ?: 3000) / 1000).toInt().coerceIn(0, 3600)
+        val minInput = secondsRow(R.string.wait_min_label, initialMinSec)
+        val maxInput = secondsRow(R.string.wait_max_label, initialMaxSec)
         AlertDialog.Builder(this)
             .setTitle(R.string.step_wait_random)
             .setView(layout)
             .setPositiveButton(R.string.ok) { _, _ ->
-                val minMs = minPicker.value * 100L
-                var maxMs = maxPicker.value * 100L
+                val minSec = minInput.text.toString().toIntOrNull()
+                    ?.coerceIn(0, 3600) ?: 1
+                val maxSecRaw = maxInput.text.toString().toIntOrNull()
+                    ?.coerceIn(0, 3600) ?: 3
+                // Unchanged bounds keep their exact stored ms (see the
+                // KDoc above); changed bounds become whole seconds.
+                val minMs = if (existing != null && minSec == initialMinSec) {
+                    existing.waitMinMs
+                } else {
+                    minSec * 1000L
+                }
+                var maxMs = if (existing != null && maxSecRaw == initialMaxSec) {
+                    existing.waitMaxMs
+                } else {
+                    maxSecRaw * 1000L
+                }
+                // A raised minimum must not leave max below min: the
+                // runner coerces anyway, but the stored pair stays valid.
                 if (maxMs < minMs) maxMs = minMs
                 val old = subActionList(listKey).getOrNull(index)
                 putSubAction(
@@ -2575,7 +2942,9 @@ class RecognitionEditActivity : AppCompatActivity() {
             afterRetryMode = afterRetryMode,
             afterRetrySteps = afterActions.toList(),
             afterRetryJumpTarget =
-                if (afterRetryMode == AfterRetryMode.JUMP) afterRetryJumpTarget else -1
+                if (afterRetryMode == AfterRetryMode.JUMP) afterRetryJumpTarget else -1,
+            breakLoopOnSuccess = checkBreakLoopSuccess.isChecked,
+            breakLoopOnFailure = checkBreakLoopFailure.isChecked
         )
         val result = Intent().apply {
             putExtra("step_json", WorkflowStore.stepToJson(built).toString())
@@ -2611,5 +2980,6 @@ class RecognitionEditActivity : AppCompatActivity() {
         StepType.SLIDE_LIST -> getString(R.string.step_slide_list)
         StepType.QS_TILE -> getString(R.string.step_qs_tile)
         StepType.POWER_DIALOG -> getString(R.string.step_power_dialog)
+        StepType.LOOP_ACTION -> getString(R.string.step_loop)
     }
 }

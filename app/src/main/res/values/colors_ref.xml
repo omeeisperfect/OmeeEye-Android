@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Reference LIGHT theme colors for the workflow interior only
+     (task editor, ADD menu, recognition editors, step rows). These
+     are fixed values, NOT DayNight names, so the workflow screens
+     stay light even when the rest of the app runs AMOLED dark.
+     Values are the reference app's own resource colors, re-declared
+     here in our own file: page #F6F7F9, cards white, title #474747,
+     summary grey #A1A2A3, dropdown orange #F6890D, active green
+     #2D9C83, error red #F86161. -->
+<resources>
+    <color name="ref_page_bg">#F6F7F9</color>
+    <color name="ref_card">#FFFFFF</color>
+    <color name="ref_card_stroke">#E2E6E9</color>
+    <color name="ref_title">#474747</color>
+    <color name="ref_summary">#A1A2A3</color>
+    <color name="ref_orange">#F6890D</color>
+    <color name="ref_green">#2D9C83</color>
+    <color name="ref_red">#F86161</color>
+</resources>

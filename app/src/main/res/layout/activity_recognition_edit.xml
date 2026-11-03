@@ -1,13 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Recognition step editor: one scrollable form, sections in order —
-     Identification, success actions, retry, after-retry, Save / Close.
-     All colors are @color/... names (night overrides apply); no hex
-     colors and no coordinate inputs anywhere in this layout. Groups
-     that do not apply to the edited step type are hidden in code. -->
+<!-- Recognition step editor, reference structure, our own layout.
+     Sections in order: top card (Judgment method + Recognition area
+     dropdown pills, button/image/color value rows), actions after
+     successful recognition (Perform click / Custom actions / Jump &
+     Continue cards), retry, actions after the retry, Cycles, then
+     SAVE / CLOSE green pills (CLOSE bottom-right).
+     Fixed reference light colors throughout, so this screen stays
+     light even when the rest of the app runs AMOLED dark.
+     No coordinate inputs anywhere: regions, templates, colors and
+     anchors are all picked on screen via the overlay.
+     View IDs are unchanged from the previous layout, except the
+     button text/ID/description fields, which are now value TextViews
+     edited through their pencil buttons (same IDs), and the mode
+     radios, which are now one RadioButton per card instead of a
+     RadioGroup (same radio IDs). -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/background"
+    android:background="@color/ref_page_bg"
     android:fillViewport="true">
 
     <LinearLayout
@@ -20,61 +31,104 @@
             android:id="@+id/rec_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textColor="@color/text_primary"
+            android:textColor="@color/ref_title"
             android:textSize="22sp"
             android:textStyle="bold" />
 
-        <!-- ================= Section 1: Identification ================= -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:text="@string/rec_section_identification"
-            android:textColor="@color/text_primary"
-            android:textSize="18sp"
-            android:textStyle="bold" />
-
+        <!-- ================= Top card ================= -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:background="@drawable/row_card"
+            android:background="@drawable/row_card_ref"
             android:orientation="vertical"
             android:padding="12dp">
 
-            <!-- Judgment method: Button / OCR text matching only; hidden
-                 for Image and Color steps (it would do nothing there). -->
-            <TextView
-                android:id="@+id/rec_judgment_label"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/rec_judgment_label"
-                android:textColor="@color/text_secondary"
-                android:textSize="14sp" />
-
-            <Button
-                android:id="@+id/btn_judgment"
-                style="@style/OutlineButton"
+            <!-- Judgment method row: label + ? + dropdown pill.
+                 Hidden for Image/Color steps (see
+                 applyStepTypeVisibility, which also hides the ?). -->
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="@string/add_judgment_same" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-            <TextView
-                android:layout_width="wrap_content"
+                <TextView
+                    android:id="@+id/rec_judgment_label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/rec_judgment_label"
+                    android:textColor="@color/ref_title"
+                    android:textSize="16sp" />
+
+                <ImageButton
+                    android:id="@+id/btn_judgment_help"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_marginStart="4dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/rec_judgment_label"
+                    android:src="@android:drawable/ic_menu_help"
+                    android:tint="@color/ref_title" />
+
+                <View
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:layout_weight="1" />
+
+                <Button
+                    android:id="@+id/btn_judgment"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/pill_outline_orange"
+                    android:minWidth="0dp"
+                    android:paddingHorizontal="12dp"
+                    android:text="@string/add_judgment_same"
+                    android:textColor="@color/ref_orange"
+                    android:textSize="14sp" />
+            </LinearLayout>
+
+            <!-- Recognition area row: label + ? + dropdown pill. -->
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
-                android:text="@string/rec_area_label"
-                android:textColor="@color/text_secondary"
-                android:textSize="14sp" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-            <Button
-                android:id="@+id/btn_area"
-                style="@style/OutlineButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="@string/rec_area_fullscreen" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/rec_area_label"
+                    android:textColor="@color/ref_title"
+                    android:textSize="16sp" />
+
+                <ImageButton
+                    android:id="@+id/btn_area_help"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_marginStart="4dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/rec_area_label"
+                    android:src="@android:drawable/ic_menu_help"
+                    android:tint="@color/ref_title" />
+
+                <View
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:layout_weight="1" />
+
+                <Button
+                    android:id="@+id/btn_area"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/pill_outline_orange"
+                    android:minWidth="0dp"
+                    android:paddingHorizontal="12dp"
+                    android:text="@string/rec_area_fullscreen"
+                    android:textColor="@color/ref_orange"
+                    android:textSize="14sp" />
+            </LinearLayout>
 
             <Button
                 android:id="@+id/btn_pick_region"
@@ -82,7 +136,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:text="@string/rec_pick_region" />
+                android:text="@string/rec_pick_region"
+                android:textColor="@color/ref_title"
+                app:strokeColor="@color/ref_summary" />
 
             <TextView
                 android:id="@+id/text_region_status"
@@ -90,78 +146,147 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
                 android:text="@string/rec_region_not_picked"
-                android:textColor="@color/text_secondary"
+                android:textColor="@color/ref_summary"
                 android:textSize="14sp" />
         </LinearLayout>
 
         <!-- Button fields (BUTTON_RECOGNITION only). Text, ID and
-             description are text, not locations, so typing them is fine. -->
+             description are text, not locations, so editing them
+             through the pencil dialogs is fine. -->
         <LinearLayout
             android:id="@+id/group_button"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:background="@drawable/row_card"
+            android:background="@drawable/row_card_ref"
             android:orientation="vertical"
             android:padding="12dp">
 
-            <TextView
-                android:layout_width="wrap_content"
+            <!-- Button text: label + pencil, value below in bold orange. -->
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/rec_button_text_label"
-                android:textColor="@color/text_secondary"
-                android:textSize="14sp" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-            <EditText
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/rec_button_text_label"
+                    android:textColor="@color/ref_title"
+                    android:textSize="16sp" />
+
+                <ImageButton
+                    android:id="@+id/btn_edit_button_text"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_marginStart="4dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/rec_button_text_label"
+                    android:src="@android:drawable/ic_menu_edit"
+                    android:tint="@color/ref_title" />
+            </LinearLayout>
+
+            <TextView
                 android:id="@+id/edit_button_text"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
-                android:hint="@string/rec_button_text_hint"
-                android:inputType="text"
-                android:singleLine="true" />
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textColor="@color/ref_orange"
+                android:textSize="18sp"
+                android:textStyle="bold" />
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="@string/rec_button_id_label"
-                android:textColor="@color/text_secondary"
-                android:textSize="14sp" />
-
-            <EditText
-                android:id="@+id/edit_button_id"
+            <View
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:hint="@string/rec_button_id_hint"
-                android:inputType="text"
-                android:singleLine="true" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_height="1dp"
                 android:layout_marginTop="8dp"
-                android:text="@string/rec_button_desc_label"
-                android:textColor="@color/text_secondary"
-                android:textSize="14sp" />
-
-            <EditText
-                android:id="@+id/edit_button_desc"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:hint="@string/rec_button_desc_hint"
-                android:inputType="text"
-                android:singleLine="true" />
+                android:background="@color/ref_card_stroke" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
                 android:text="@string/rec_button_text_help"
-                android:textColor="@color/text_secondary"
-                android:textSize="14sp" />
+                android:textColor="@color/ref_summary"
+                android:textSize="11sp" />
+
+            <!-- Button ID: grey label left, value right-aligned. -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/rec_button_id_label"
+                    android:textColor="@color/ref_summary"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/edit_button_id"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:ellipsize="end"
+                    android:gravity="end"
+                    android:maxLines="1"
+                    android:textColor="@color/ref_title"
+                    android:textSize="12sp" />
+
+                <ImageButton
+                    android:id="@+id/btn_edit_button_id"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_marginStart="4dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/rec_button_id_label"
+                    android:src="@android:drawable/ic_menu_edit"
+                    android:tint="@color/ref_title" />
+            </LinearLayout>
+
+            <!-- Button description: grey label left, value right-aligned. -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/rec_button_desc_label"
+                    android:textColor="@color/ref_summary"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:id="@+id/edit_button_desc"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:ellipsize="end"
+                    android:gravity="end"
+                    android:maxLines="1"
+                    android:textColor="@color/ref_title"
+                    android:textSize="12sp" />
+
+                <ImageButton
+                    android:id="@+id/btn_edit_button_desc"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_marginStart="4dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/rec_button_desc_label"
+                    android:src="@android:drawable/ic_menu_edit"
+                    android:tint="@color/ref_title" />
+            </LinearLayout>
         </LinearLayout>
 
         <!-- Image fields (IMAGE_RECOGNITION only) -->
@@ -170,7 +295,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:background="@drawable/row_card"
+            android:background="@drawable/row_card_ref"
             android:orientation="vertical"
             android:padding="12dp">
 
@@ -187,7 +312,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/rec_template_none"
-                android:textColor="@color/text_secondary"
+                android:textColor="@color/ref_summary"
                 android:textSize="14sp" />
 
             <Button
@@ -196,7 +321,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:text="@string/rec_capture_template" />
+                android:text="@string/rec_capture_template"
+                android:textColor="@color/ref_title"
+                app:strokeColor="@color/ref_summary" />
 
             <Button
                 android:id="@+id/btn_pick_search_region"
@@ -204,7 +331,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:text="@string/rec_pick_search_region" />
+                android:text="@string/rec_pick_search_region"
+                android:textColor="@color/ref_title"
+                app:strokeColor="@color/ref_summary" />
 
             <TextView
                 android:id="@+id/text_image_region_status"
@@ -212,7 +341,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
                 android:text="@string/rec_region_not_picked"
-                android:textColor="@color/text_secondary"
+                android:textColor="@color/ref_summary"
                 android:textSize="14sp" />
         </LinearLayout>
 
@@ -222,7 +351,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:background="@drawable/row_card"
+            android:background="@drawable/row_card_ref"
             android:orientation="vertical"
             android:padding="12dp">
 
@@ -230,7 +359,7 @@
                 android:id="@+id/view_color_swatch"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
-                android:background="@color/divider" />
+                android:background="@color/ref_card_stroke" />
 
             <TextView
                 android:id="@+id/text_color_status"
@@ -238,7 +367,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
                 android:text="@string/rec_color_none"
-                android:textColor="@color/text_secondary"
+                android:textColor="@color/ref_summary"
                 android:textSize="14sp" />
 
             <Button
@@ -247,14 +376,16 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:text="@string/rec_pick_color_area" />
+                android:text="@string/rec_pick_color_area"
+                android:textColor="@color/ref_title"
+                app:strokeColor="@color/ref_summary" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
                 android:text="@string/rec_tolerance_label"
-                android:textColor="@color/text_secondary"
+                android:textColor="@color/ref_summary"
                 android:textSize="14sp" />
 
             <NumberPicker
@@ -266,7 +397,7 @@
                 android:id="@+id/text_tolerance_value"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textColor="@color/text_secondary"
+                android:textColor="@color/ref_summary"
                 android:textSize="14sp" />
         </LinearLayout>
 
@@ -276,7 +407,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:background="@drawable/row_card"
+            android:background="@drawable/row_card_ref"
             android:orientation="vertical"
             android:padding="12dp">
 
@@ -285,7 +416,9 @@
                 style="@style/OutlineButton"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/rec_pick_region" />
+                android:text="@string/rec_pick_region"
+                android:textColor="@color/ref_title"
+                app:strokeColor="@color/ref_summary" />
 
             <TextView
                 android:id="@+id/text_ocr_region_status"
@@ -293,7 +426,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
                 android:text="@string/rec_region_not_picked"
-                android:textColor="@color/text_secondary"
+                android:textColor="@color/ref_summary"
                 android:textSize="14sp" />
 
             <!-- Optional text to match: empty means any text found
@@ -306,7 +439,9 @@
                 android:layout_marginTop="8dp"
                 android:hint="@string/rec_ocr_match_hint"
                 android:inputType="text"
-                android:singleLine="true" />
+                android:singleLine="true"
+                android:textColor="@color/ref_title"
+                android:textColorHint="@color/ref_summary" />
 
             <EditText
                 android:id="@+id/edit_ocr_variable"
@@ -315,14 +450,16 @@
                 android:layout_marginTop="8dp"
                 android:hint="@string/rec_ocr_variable_hint"
                 android:inputType="text"
-                android:singleLine="true" />
+                android:singleLine="true"
+                android:textColor="@color/ref_title"
+                android:textColorHint="@color/ref_summary" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
                 android:text="@string/rec_ocr_hint"
-                android:textColor="@color/text_secondary"
+                android:textColor="@color/ref_summary"
                 android:textSize="14sp" />
         </LinearLayout>
 
@@ -332,42 +469,66 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
             android:text="@string/rec_section_success"
-            android:textColor="@color/text_primary"
+            android:textColor="@color/ref_title"
             android:textSize="18sp"
             android:textStyle="bold" />
 
+        <!-- Perform click card: pill + pencil + xN + radio on the right. -->
         <LinearLayout
+            android:id="@+id/card_success_click"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:background="@drawable/row_card"
+            android:background="@drawable/row_card_ref"
+            android:clickable="true"
+            android:focusable="true"
             android:orientation="vertical"
             android:padding="12dp">
 
-            <RadioGroup
-                android:id="@+id/radio_success_group"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical">
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/pill_outline_orange"
+                    android:paddingHorizontal="8dp"
+                    android:paddingVertical="2dp"
+                    android:text="@string/rec_mode_click"
+                    android:textColor="@color/ref_orange"
+                    android:textSize="14sp" />
+
+                <ImageButton
+                    android:id="@+id/btn_edit_click_count"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_marginStart="4dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/rec_click_count_label"
+                    android:src="@android:drawable/ic_menu_edit"
+                    android:tint="@color/ref_title" />
+
+                <TextView
+                    android:id="@+id/text_click_count_badge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:textColor="@color/ref_orange"
+                    android:textSize="14sp" />
+
+                <View
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:layout_weight="1" />
 
                 <RadioButton
                     android:id="@+id/radio_success_click"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/rec_mode_click" />
-
-                <RadioButton
-                    android:id="@+id/radio_success_custom"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/rec_mode_custom" />
-
-                <RadioButton
-                    android:id="@+id/radio_success_jump"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/rec_mode_jump" />
-            </RadioGroup>
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
 
             <!-- Perform click: click count only -->
             <LinearLayout
@@ -381,7 +542,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/rec_click_count_label"
-                    android:textColor="@color/text_secondary"
+                    android:textColor="@color/ref_summary"
                     android:textSize="14sp" />
 
                 <NumberPicker
@@ -393,52 +554,129 @@
                     android:id="@+id/text_click_count_value"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:textColor="@color/text_secondary"
+                    android:textColor="@color/ref_summary"
                     android:textSize="14sp" />
             </LinearLayout>
+        </LinearLayout>
 
-            <!-- Custom actions, and the same list as "actions before
-                 jumping" in Jump mode. The click-first switch shows
-                 in Custom and Jump modes (the runner taps first only
-                 for Custom mode; see RecognitionEditActivity). -->
+        <!-- Custom actions card: title + radio on the right. Its
+             content (click-first checkbox + action list) is the shared
+             group below, shown in Custom and Jump modes. -->
+        <LinearLayout
+            android:id="@+id/card_success_custom"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/row_card_ref"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="12dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/rec_mode_custom"
+                android:textColor="@color/ref_title"
+                android:textSize="16sp" />
+
+            <RadioButton
+                android:id="@+id/radio_success_custom"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+
+        <!-- Shared custom-action content for Custom and Jump modes:
+             click-first checkbox + note, then the action list. -->
+        <LinearLayout
+            android:id="@+id/success_actions_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/row_card_ref"
+            android:orientation="vertical"
+            android:padding="12dp">
+
             <LinearLayout
-                android:id="@+id/success_actions_group"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <CheckBox
+                    android:id="@+id/switch_click_first"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:text="@string/rec_click_first_note"
+                    android:textColor="@color/ref_summary"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/list_success_actions"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:orientation="vertical">
+                android:orientation="vertical" />
 
-                <Switch
-                    android:id="@+id/switch_click_first"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/rec_click_first" />
+            <TextView
+                android:id="@+id/text_success_empty"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/rec_no_actions"
+                android:textColor="@color/ref_summary"
+                android:textSize="14sp" />
 
-                <LinearLayout
-                    android:id="@+id/list_success_actions"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:orientation="vertical" />
+            <Button
+                android:id="@+id/btn_add_success_action"
+                style="@style/OutlineButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/rec_add_action"
+                android:textColor="@color/ref_title"
+                app:strokeColor="@color/ref_summary" />
+        </LinearLayout>
+
+        <!-- Jump & Continue card: title + radio, then the jump group. -->
+        <LinearLayout
+            android:id="@+id/card_success_jump"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/row_card_ref"
+            android:clickable="true"
+            android:focusable="true"
+            android:orientation="vertical"
+            android:padding="12dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
                 <TextView
-                    android:id="@+id/text_success_empty"
-                    android:layout_width="wrap_content"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:text="@string/rec_no_actions"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="14sp" />
+                    android:layout_weight="1"
+                    android:text="@string/rec_mode_jump"
+                    android:textColor="@color/ref_title"
+                    android:textSize="16sp" />
 
-                <Button
-                    android:id="@+id/btn_add_success_action"
-                    style="@style/OutlineButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="@string/rec_add_action" />
+                <RadioButton
+                    android:id="@+id/radio_success_jump"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
             </LinearLayout>
 
-            <!-- Jump target picker + note (Jump mode only) -->
             <LinearLayout
                 android:id="@+id/success_jump_group"
                 android:layout_width="match_parent"
@@ -446,12 +684,21 @@
                 android:layout_marginTop="8dp"
                 android:orientation="vertical">
 
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/rec_jump_before_note"
+                    android:textColor="@color/ref_summary"
+                    android:textSize="13sp" />
+
                 <Button
                     android:id="@+id/btn_success_jump_target"
-                    style="@style/OutlineButton"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/rec_jump_target" />
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/dashed_outline"
+                    android:text="@string/rec_jump_target"
+                    android:textColor="@color/ref_summary" />
 
                 <TextView
                     android:id="@+id/text_success_jump_status"
@@ -459,7 +706,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
                     android:text="@string/rec_jump_none"
-                    android:textColor="@color/text_secondary"
+                    android:textColor="@color/ref_summary"
                     android:textSize="14sp" />
 
                 <TextView
@@ -467,26 +714,64 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
                     android:text="@string/rec_jump_note"
-                    android:textColor="@color/text_secondary"
+                    android:textColor="@color/ref_summary"
                     android:textSize="14sp" />
             </LinearLayout>
         </LinearLayout>
 
-        <!-- ================= Section 3: retry ================= -->
+        <!-- Break loop card, bottom of the success section: label +
+             checkbox. Style matches the spec card (padding 8,
+             marginBottom 8, minHeight 32). -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/row_card_ref"
+            android:gravity="center_vertical"
+            android:minHeight="32dp"
+            android:orientation="horizontal"
+            android:padding="8dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/rec_break_loop_success"
+                android:textColor="@color/ref_title"
+                android:textSize="14sp" />
+
+            <CheckBox
+                android:id="@+id/check_break_loop_success"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+
+        <!-- ================= Section 3: after recognition failure ================= -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
-            android:text="@string/rec_section_retry"
-            android:textColor="@color/text_primary"
+            android:text="@string/rec_section_failure"
+            android:textColor="@color/ref_title"
             android:textSize="18sp"
             android:textStyle="bold" />
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/rec_retry_heading"
+            android:textColor="@color/ref_title"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <!-- Retry card: before-retry actions + count + delay. -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:background="@drawable/row_card"
+            android:background="@drawable/row_card_ref"
             android:orientation="vertical"
             android:padding="12dp">
 
@@ -494,8 +779,16 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/rec_retry_actions_label"
-                android:textColor="@color/text_secondary"
+                android:textColor="@color/ref_summary"
                 android:textSize="14sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="@string/rec_retry_before_note"
+                android:textColor="@color/ref_summary"
+                android:textSize="13sp" />
 
             <LinearLayout
                 android:id="@+id/list_retry_actions"
@@ -509,7 +802,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/rec_no_actions"
-                android:textColor="@color/text_secondary"
+                android:textColor="@color/ref_summary"
                 android:textSize="14sp" />
 
             <Button
@@ -518,14 +811,16 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:text="@string/rec_add_action" />
+                android:text="@string/rec_add_action"
+                android:textColor="@color/ref_title"
+                app:strokeColor="@color/ref_summary" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
                 android:text="@string/rec_retry_count_label"
-                android:textColor="@color/text_secondary"
+                android:textColor="@color/ref_summary"
                 android:textSize="14sp" />
 
             <NumberPicker
@@ -537,7 +832,7 @@
                 android:id="@+id/text_retry_count_value"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textColor="@color/text_secondary"
+                android:textColor="@color/ref_summary"
                 android:textSize="14sp" />
 
             <TextView
@@ -545,7 +840,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
                 android:text="@string/rec_retry_delay_label"
-                android:textColor="@color/text_secondary"
+                android:textColor="@color/ref_summary"
                 android:textSize="14sp" />
 
             <NumberPicker
@@ -557,7 +852,7 @@
                 android:id="@+id/text_retry_delay_value"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textColor="@color/text_secondary"
+                android:textColor="@color/ref_summary"
                 android:textSize="14sp" />
         </LinearLayout>
 
@@ -567,76 +862,96 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
             android:text="@string/rec_section_after_retry"
-            android:textColor="@color/text_primary"
-            android:textSize="18sp"
+            android:textColor="@color/ref_title"
+            android:textSize="16sp"
             android:textStyle="bold" />
 
+        <!-- Ignore card -->
         <LinearLayout
+            android:id="@+id/card_after_ignore"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:background="@drawable/row_card"
+            android:background="@drawable/row_card_ref"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="12dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/rec_mode_ignore"
+                android:textColor="@color/ref_title"
+                android:textSize="16sp" />
+
+            <RadioButton
+                android:id="@+id/radio_after_ignore"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+
+        <!-- Custom actions card -->
+        <LinearLayout
+            android:id="@+id/card_after_custom"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/row_card_ref"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="12dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/rec_mode_custom"
+                android:textColor="@color/ref_title"
+                android:textSize="16sp" />
+
+            <RadioButton
+                android:id="@+id/radio_after_custom"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+        </LinearLayout>
+
+        <!-- Jump & Continue card -->
+        <LinearLayout
+            android:id="@+id/card_after_jump"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/row_card_ref"
+            android:clickable="true"
+            android:focusable="true"
             android:orientation="vertical"
             android:padding="12dp">
 
-            <RadioGroup
-                android:id="@+id/radio_after_group"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical">
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-                <RadioButton
-                    android:id="@+id/radio_after_ignore"
-                    android:layout_width="wrap_content"
+                <TextView
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:text="@string/rec_mode_ignore" />
-
-                <RadioButton
-                    android:id="@+id/radio_after_custom"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/rec_mode_custom" />
+                    android:layout_weight="1"
+                    android:text="@string/rec_mode_jump"
+                    android:textColor="@color/ref_title"
+                    android:textSize="16sp" />
 
                 <RadioButton
                     android:id="@+id/radio_after_jump"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/rec_mode_jump" />
-            </RadioGroup>
-
-            <!-- Custom actions, and the same list as "actions before
-                 jumping" in Jump mode. -->
-            <LinearLayout
-                android:id="@+id/after_actions_group"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:orientation="vertical">
-
-                <LinearLayout
-                    android:id="@+id/list_after_actions"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical" />
-
-                <TextView
-                    android:id="@+id/text_after_empty"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/rec_no_actions"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="14sp" />
-
-                <Button
-                    android:id="@+id/btn_add_after_action"
-                    style="@style/OutlineButton"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="@string/rec_add_action" />
+                    android:layout_height="wrap_content" />
             </LinearLayout>
 
-            <!-- Jump target picker + note (Jump mode only) -->
             <LinearLayout
                 android:id="@+id/after_jump_group"
                 android:layout_width="match_parent"
@@ -644,12 +959,21 @@
                 android:layout_marginTop="8dp"
                 android:orientation="vertical">
 
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/rec_jump_before_note"
+                    android:textColor="@color/ref_summary"
+                    android:textSize="13sp" />
+
                 <Button
                     android:id="@+id/btn_after_jump_target"
-                    style="@style/OutlineButton"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/rec_jump_target" />
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/dashed_outline"
+                    android:text="@string/rec_jump_target"
+                    android:textColor="@color/ref_summary" />
 
                 <TextView
                     android:id="@+id/text_after_jump_status"
@@ -657,7 +981,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
                     android:text="@string/rec_jump_none"
-                    android:textColor="@color/text_secondary"
+                    android:textColor="@color/ref_summary"
                     android:textSize="14sp" />
 
                 <TextView
@@ -665,9 +989,72 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
                     android:text="@string/rec_jump_note"
-                    android:textColor="@color/text_secondary"
+                    android:textColor="@color/ref_summary"
                     android:textSize="14sp" />
             </LinearLayout>
+        </LinearLayout>
+
+        <!-- Shared after-retry custom-action content, shown in Custom
+             and Jump modes (same shared-list design as success). -->
+        <LinearLayout
+            android:id="@+id/after_actions_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/row_card_ref"
+            android:orientation="vertical"
+            android:padding="12dp">
+
+            <LinearLayout
+                android:id="@+id/list_after_actions"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <TextView
+                android:id="@+id/text_after_empty"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/rec_no_actions"
+                android:textColor="@color/ref_summary"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/btn_add_after_action"
+                style="@style/OutlineButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/rec_add_action"
+                android:textColor="@color/ref_title"
+                app:strokeColor="@color/ref_summary" />
+        </LinearLayout>
+
+        <!-- Break loop card, bottom of the failure section: label +
+             checkbox. Same spec card style as the success card. -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/row_card_ref"
+            android:gravity="center_vertical"
+            android:minHeight="32dp"
+            android:orientation="horizontal"
+            android:padding="8dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/rec_break_loop_failure"
+                android:textColor="@color/ref_title"
+                android:textSize="14sp" />
+
+            <CheckBox
+                android:id="@+id/check_break_loop_failure"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
         </LinearLayout>
 
         <!-- ================= Cycles ================= -->
@@ -676,7 +1063,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
             android:text="@string/rec_cycles_title"
-            android:textColor="@color/text_primary"
+            android:textColor="@color/ref_title"
             android:textSize="18sp"
             android:textStyle="bold" />
 
@@ -684,7 +1071,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:background="@drawable/row_card"
+            android:background="@drawable/row_card_ref"
             android:orientation="vertical"
             android:padding="12dp">
 
@@ -694,7 +1081,8 @@
                 android:layout_height="wrap_content" />
         </LinearLayout>
 
-        <!-- ================= Bottom: Save / Close ================= -->
+        <!-- ================= Bottom: SAVE / CLOSE =================
+             Both green pills; CLOSE sits bottom-right, as specified. -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -702,21 +1090,25 @@
             android:orientation="horizontal">
 
             <Button
-                android:id="@+id/btn_rec_cancel"
-                style="@style/OutlineButton"
+                android:id="@+id/btn_rec_save"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="8dp"
                 android:layout_weight="1"
-                android:text="@string/rec_close" />
+                android:backgroundTint="@color/ref_green"
+                android:text="@string/rec_save"
+                android:textColor="#FFFFFF"
+                app:cornerRadius="24dp" />
 
             <Button
-                android:id="@+id/btn_rec_save"
-                style="@style/FilledButton"
+                android:id="@+id/btn_rec_cancel"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="@string/rec_save" />
+                android:backgroundTint="@color/ref_green"
+                android:text="@string/close"
+                android:textColor="#FFFFFF"
+                app:cornerRadius="24dp" />
         </LinearLayout>
 
     </LinearLayout>

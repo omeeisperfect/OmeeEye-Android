@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Solid green pill (capture overlay controls, CLOSE/SAVE pills). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/ref_green" />
+    <corners android:radius="20dp" />
+</shape>

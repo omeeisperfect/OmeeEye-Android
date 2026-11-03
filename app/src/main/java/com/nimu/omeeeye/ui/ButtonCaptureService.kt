@@ -22,7 +22,6 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityNodeInfo
-import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -74,8 +73,8 @@ object ButtonCaptureStore {
  * description and screen bounds, drawing a red outline over each
  * leaf only — never over a container that holds clickable leaves
  * (see visitNode). Initially only nodes with non-empty text are
- * shown; "Show more" reveals nodes that have only an id /
- * description. Tapping an outlined node stores it in
+ * shown; "All buttons" / "Expand More" reveal nodes that have only
+ * an id / description. Tapping an outlined node stores it in
  * ButtonCaptureStore and returns to the editor. Cancel returns
  * without storing anything.
  *
@@ -132,7 +131,8 @@ class ButtonCaptureService : Service() {
     private lateinit var windowManager: WindowManager
     private var rootView: View? = null
     private var drawView: CaptureDrawView? = null
-    private var showMoreButton: Button? = null
+    private var allButtonsView: TextView? = null
+    private var expandMoreView: TextView? = null
     private var returnClassName: String = ""
     private var showAll: Boolean = false
     private var retried: Boolean = false
@@ -288,7 +288,7 @@ class ButtonCaptureService : Service() {
         return yielded
     }
 
-    /** Nodes currently drawn: text nodes first, plus id/desc-only on Show more. */
+    /** Nodes currently drawn: text nodes first, plus id/desc-only once expanded. */
     private fun visibleNodes(): List<CapturedNode> =
         if (showAll) nodes else nodes.filter { it.text.isNotEmpty() }
 
@@ -312,48 +312,82 @@ class ButtonCaptureService : Service() {
             )
         )
 
+        // Reference overlay controls (layout aQ shape): a vertical
+        // column of pills at the top-left — Cancel (red), All buttons
+        // (green) and Expand More (green). The column itself does not
+        // intercept touches, so only taps exactly on a pill are
+        // consumed; every other tap reaches the outline layer below.
+        // Behaviour behind the pills is unchanged: Cancel stores
+        // nothing; All buttons reveals every collected node (text
+        // nodes plus id/description-only nodes); Expand More toggles
+        // that wider set on and off. The tight leaf outlines, the
+        // children-first traversal and the smallest-box-wins hit-test
+        // below are untouched.
+        val minPillWidth = (80 * density).toInt()
+        fun pill(text: String, backgroundRes: Int, topMargin: Int): TextView =
+            TextView(this).apply {
+                this.text = text
+                setTextColor(ContextCompat.getColor(context, R.color.overlay_bar_text))
+                textSize = 16f
+                gravity = Gravity.CENTER
+                minWidth = minPillWidth
+                setPadding(pad, pad / 2, pad, pad / 2)
+                setBackgroundResource(backgroundRes)
+                isClickable = true
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    this.topMargin = topMargin
+                }
+            }
         val bar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            isClickable = true
-            setBackgroundColor(ContextCompat.getColor(context, R.color.overlay_bar))
+            orientation = LinearLayout.VERTICAL
             setPadding(pad, pad, pad, pad)
             layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
-            ).apply { gravity = Gravity.TOP }
+            ).apply { gravity = Gravity.TOP or Gravity.START }
         }
         bar.addView(
             TextView(this).apply {
                 text = getString(R.string.button_capture_hint)
                 setTextColor(ContextCompat.getColor(context, R.color.overlay_bar_text))
                 textSize = 15f
-                layoutParams = LinearLayout.LayoutParams(
-                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
-                )
+                setBackgroundColor(ContextCompat.getColor(context, R.color.overlay_bar))
+                setPadding(pad, pad / 2, pad, pad / 2)
             }
         )
-        // "Show more" only exists when there is something more to show.
-        if (nodes.any { it.text.isEmpty() }) {
-            showMoreButton = Button(this).apply {
-                text = getString(R.string.button_capture_show_more)
-                setOnClickListener {
-                    showAll = !showAll
-                    text = getString(
-                        if (showAll) R.string.button_capture_show_less
-                        else R.string.button_capture_show_more
-                    )
-                    drawView?.setNodes(visibleNodes())
-                }
-            }
-            bar.addView(showMoreButton)
-        }
         bar.addView(
-            Button(this).apply {
-                text = getString(R.string.cancel)
+            pill(getString(R.string.cancel), R.drawable.pill_solid_red, pad).apply {
                 setOnClickListener { finishWithoutCapture() }
             }
         )
+        allButtonsView = pill(
+            getString(R.string.capture_all_buttons), R.drawable.pill_solid_green,
+            pad / 2
+        ).apply {
+            setOnClickListener {
+                showAll = true
+                expandMoreView?.text = getString(R.string.capture_show_fewer)
+                drawView?.setNodes(visibleNodes())
+            }
+        }
+        bar.addView(allButtonsView)
+        expandMoreView = pill(
+            getString(R.string.capture_expand_more), R.drawable.pill_solid_green,
+            pad / 2
+        ).apply {
+            setOnClickListener {
+                showAll = !showAll
+                text = getString(
+                    if (showAll) R.string.capture_show_fewer
+                    else R.string.capture_expand_more
+                )
+                drawView?.setNodes(visibleNodes())
+            }
+        }
+        bar.addView(expandMoreView)
         root.addView(bar)
 
         drawView?.setNodes(visibleNodes())
@@ -429,7 +463,8 @@ class ButtonCaptureService : Service() {
         }
         rootView = null
         drawView = null
-        showMoreButton = null
+        allButtonsView = null
+        expandMoreView = null
     }
 
     private fun overlayParams(): WindowManager.LayoutParams {

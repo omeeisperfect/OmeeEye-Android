@@ -25,8 +25,6 @@
     <string name="btn_capture_from_screen">Capture from screen</string>
     <string name="button_capture_title">Capture button</string>
     <string name="button_capture_hint">Tap an outlined button to capture it.</string>
-    <string name="button_capture_show_more">Show more</string>
-    <string name="button_capture_show_less">Show less</string>
     <string name="button_capture_no_service">Button capture needs the accessibility service turned on.</string>
     <string name="button_capture_none_found">No clickable buttons found on this screen.</string>
     <string name="button_capture_captured">Button captured.</string>

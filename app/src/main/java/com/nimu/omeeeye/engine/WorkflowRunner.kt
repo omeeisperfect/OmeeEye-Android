@@ -73,6 +73,23 @@ import kotlin.random.Random
  *   They arrive with an incremented depth via [executeEmbedded]; a
  *   recognition step at depth >= MAX_RECOGNITION_DEPTH (top level + 2
  *   nested levels) fails with "Recognition nesting too deep".
+ * - Break loop (reference-workflow clone): a recognition step with
+ *   [Step.breakLoopOnSuccess] ends the whole run as FINISHED once its
+ *   success handling has run; [Step.breakLoopOnFailure] does the same
+ *   once the retries are exhausted and the after-retry handling has
+ *   run. Both skip all remaining steps, cycles and data iterations.
+ *   A break inside a sub-task or a sub-action list propagates to the
+ *   outer run (unlike jumps, which are list-local, a break has no
+ *   list-local meaning). When the matching mode is JUMP, the break
+ *   wins: pre-jump actions still run, the jump itself is skipped.
+ * - Loop action (reference-workflow clone): a LOOP_ACTION step runs
+ *   one existing step of the same workflow [Step.loopCount] times
+ *   (clamped 1..99). The target resolves by step ID through the
+ *   per-run [loopResolver] (top-level list, or the sub-workflow's
+ *   list inside a sub-task); a missing target, a self-target, or
+ *   nesting past MAX_LOOP_DEPTH fails the run cleanly. The target's
+ *   own waitAfterMs is not applied between repeats; Jump and
+ *   BreakLoop results from the target escape the loop.
  */
 object WorkflowRunner {
 
@@ -89,6 +106,12 @@ object WorkflowRunner {
         object Stopped : StepResult()
         class Failed(val message: String) : StepResult()
         class Jump(val target: Int) : StepResult()
+        /**
+         * Break loop: end the whole run as FINISHED (see the class
+         * KDoc). Only recognition steps produce it, via the break-loop
+         * flags; it propagates through sub-tasks and sub-action lists.
+         */
+        object BreakLoop : StepResult()
     }
 
     /** Detection outcome for one recognition attempt. */
@@ -110,6 +133,9 @@ object WorkflowRunner {
      * smaller remaining budget.
      */
     private const val MAX_RECOGNITION_DEPTH = 3
+    /** Loop-action nesting budget: a loop repeating a loop repeats at
+     * most this deep; deeper fails with "Loop nesting too deep". */
+    private const val MAX_LOOP_DEPTH = 5
     private const val TICK_INTERVAL_MS = 500L
     private const val SLEEP_CHUNK_MS = 100L
     private const val MAX_STEP_EXECUTIONS = 10000
@@ -148,6 +174,16 @@ object WorkflowRunner {
     // nothing. Reset before every step so a stale value can never
     // leak into another step's history line.
     private var lastOcrDetail: String = ""
+    // Loop-action target lookup for the current run (reference clone).
+    // Set by runWorkflow / runSingleStep to the top-level step list
+    // and temporarily swapped by executeSubTask to the sub-workflow's
+    // list, so a loop step always resolves against the list it runs
+    // in. Only the LOOP_ACTION branch reads it; every other step type
+    // is unaffected by its presence. Single-threaded runner: the run
+    // thread is the only writer, so no synchronisation is needed.
+    private var loopResolver: ((String) -> Step?)? = null
+    // Current loop-action nesting depth (see MAX_LOOP_DEPTH).
+    private var loopDepth: Int = 0
 
     fun init(context: Context) {
         appContext = context.applicationContext
@@ -240,6 +276,8 @@ object WorkflowRunner {
         currentDataRowColumns = emptyList()
         currentIterationOrdinal = 0
         stepLogs.clear()
+        loopResolver = null
+        loopDepth = 0
         Thread({ tickerLoop() }, "omeeeye-ticker").start()
         return true
     }
@@ -253,6 +291,8 @@ object WorkflowRunner {
             finish(workflow, Status.FAILED, noServiceMessage(), 0, workflow.steps.size)
             return
         }
+        // Loop-action targets resolve against this workflow's list.
+        loopResolver = { id -> workflow.steps.firstOrNull { it.id == id } }
         // Resolve data iterations first: null entries mean "no data row"
         // (plain cycles); a map entry means "run once for this row".
         val iterations: List<Map<String, String>?>
@@ -397,6 +437,18 @@ object WorkflowRunner {
                         }
                         index = result.target
                     }
+                    is StepResult.BreakLoop -> {
+                        // Break loop: the run ends FINISHED here. No
+                        // failure is set, so the finish below reports
+                        // FINISHED; waitAfter still applies once, like
+                        // for Jump, unless the run is stopped mid-wait.
+                        stepsDone++
+                        logStep(index, step, duration, "OK", "")
+                        if (!sleepPausable(step.waitAfterMs)) {
+                            stopped = true
+                        }
+                        break@outer
+                    }
                     is StepResult.Stopped -> {
                         logStep(index, step, duration, "STOPPED", "")
                         stopped = true
@@ -448,13 +500,15 @@ object WorkflowRunner {
             finish(workflow, Status.STOPPED, null, 0, totalSteps)
             return
         }
+        // A loop step tested on its own resolves against this list.
+        loopResolver = { id -> workflow.steps.firstOrNull { it.id == id } }
         currentStep = stepIndex
         postStepChanged(stepIndex, totalSteps, step)
         postTick()
         val stepStart = SystemClock.elapsedRealtime()
         lastOcrDetail = ""
         when (val result = executeStep(step, stepIndex, listOf(workflow.id), 0)) {
-            is StepResult.Success, is StepResult.Jump -> {
+            is StepResult.Success, is StepResult.Jump, is StepResult.BreakLoop -> {
                 logStep(stepIndex, step, SystemClock.elapsedRealtime() - stepStart, "OK", "")
                 finish(workflow, Status.FINISHED, null, 1, totalSteps)
             }
@@ -873,7 +927,92 @@ object WorkflowRunner {
                     )
                 }
             }
+            StepType.LOOP_ACTION -> executeLoop(step, index, chain, depth)
         }
+    }
+
+    /**
+     * Loop action (reference-workflow clone): run the step identified
+     * by [Step.loopTargetId] [Step.loopCount] times in sequence.
+     * The target comes from the per-run [loopResolver] (the list the
+     * loop step runs in); a blank id, a missing target, a self-target
+     * or nesting past MAX_LOOP_DEPTH fails the step cleanly instead
+     * of looping forever or crashing. The target's own waitAfterMs is
+     * deliberately NOT slept between repeats (the loop step's own
+     * waitAfterMs is slept once by the caller, exactly like per-step
+     * cycles); Stopped / Failed / Jump / BreakLoop from the target
+     * end the loop at once and propagate to the caller.
+     */
+    private fun executeLoop(
+        step: Step,
+        index: Int,
+        chain: List<String>,
+        depth: Int
+    ): StepResult {
+        if (step.loopTargetId.isBlank()) {
+            return StepResult.Failed(
+                failMessage(
+                    index,
+                    stringOr(R.string.run_loop_no_target, "Loop target not found")
+                )
+            )
+        }
+        if (step.loopTargetId == step.id) {
+            return StepResult.Failed(
+                failMessage(
+                    index,
+                    stringOr(
+                        R.string.run_loop_self,
+                        "Loop action cannot repeat itself"
+                    )
+                )
+            )
+        }
+        val target = loopResolver?.invoke(step.loopTargetId)
+            ?: return StepResult.Failed(
+                failMessage(
+                    index,
+                    stringOr(R.string.run_loop_no_target, "Loop target not found")
+                )
+            )
+        if (target.id == step.id) {
+            return StepResult.Failed(
+                failMessage(
+                    index,
+                    stringOr(
+                        R.string.run_loop_self,
+                        "Loop action cannot repeat itself"
+                    )
+                )
+            )
+        }
+        if (loopDepth >= MAX_LOOP_DEPTH) {
+            return StepResult.Failed(
+                failMessage(
+                    index,
+                    stringOr(R.string.run_loop_too_deep, "Loop nesting too deep")
+                )
+            )
+        }
+        val count = step.loopCount.coerceIn(1, 99)
+        loopDepth++
+        try {
+            repeat(count) {
+                if (!waitIfPaused()) return StepResult.Stopped
+                when (val result = executeStep(target, index, chain, depth)) {
+                    is StepResult.Success -> {
+                        // Next repeat; nothing else to do.
+                    }
+                    is StepResult.Stopped,
+                    is StepResult.Failed,
+                    is StepResult.Jump,
+                    is StepResult.BreakLoop -> return result
+                }
+            }
+        } finally {
+            loopDepth--
+        }
+        return StepResult.Success
     }
 
     private fun executeNetworkGet(step: Step, index: Int): StepResult {
@@ -934,24 +1073,35 @@ object WorkflowRunner {
             ?: return StepResult.Failed(failMessage(index, "Sub-task workflow not found"))
         // Inline: the sub-workflow's own steps run here, with its own
         // waitAfterMs pauses, but no cycle repetition of the sub-workflow.
-        for ((subIndex, subStep) in sub.steps.withIndex()) {
-            if (!waitIfPaused()) return StepResult.Stopped
-            currentStep = subIndex
-            postStepChanged(subIndex, sub.steps.size, subStep)
-            postTick()
-            when (val result = executeStep(subStep, subIndex, chain + subId, depth + 1)) {
-                is StepResult.Success -> {
-                    if (!sleepPausable(subStep.waitAfterMs)) return StepResult.Stopped
+        // Loop-action targets inside resolve against THIS list (the
+        // finally restores the caller's resolver on every exit path).
+        val previousResolver = loopResolver
+        loopResolver = { id -> sub.steps.firstOrNull { it.id == id } }
+        try {
+            for ((subIndex, subStep) in sub.steps.withIndex()) {
+                if (!waitIfPaused()) return StepResult.Stopped
+                currentStep = subIndex
+                postStepChanged(subIndex, sub.steps.size, subStep)
+                postTick()
+                when (val result = executeStep(subStep, subIndex, chain + subId, depth + 1)) {
+                    is StepResult.Success -> {
+                        if (!sleepPausable(subStep.waitAfterMs)) return StepResult.Stopped
+                    }
+                    is StepResult.Jump -> {
+                        // Jumps inside a sub-task never redirect the parent:
+                        // the jumped-to step is outside this list's scope.
+                        // Treat as completed and continue with the next step.
+                        if (!sleepPausable(subStep.waitAfterMs)) return StepResult.Stopped
+                    }
+                    // Break loop is NOT list-local (unlike jumps), so it
+                    // propagates to the outer run instead of completing.
+                    is StepResult.BreakLoop -> return result
+                    is StepResult.Stopped -> return StepResult.Stopped
+                    is StepResult.Failed -> return result // Inner message already formatted.
                 }
-                is StepResult.Jump -> {
-                    // Jumps inside a sub-task never redirect the parent:
-                    // the jumped-to step is outside this list's scope.
-                    // Treat as completed and continue with the next step.
-                    if (!sleepPausable(subStep.waitAfterMs)) return StepResult.Stopped
-                }
-                is StepResult.Stopped -> return StepResult.Stopped
-                is StepResult.Failed -> return result // Inner message already formatted.
             }
+        } finally {
+            loopResolver = previousResolver
         }
         return StepResult.Success
     }
@@ -1162,7 +1312,10 @@ object WorkflowRunner {
                                     }
                                 }
                             }
-                            StepResult.Success
+                            // Break loop ends the whole run as FINISHED
+                            // once the success handling has run.
+                            if (step.breakLoopOnSuccess) StepResult.BreakLoop
+                            else StepResult.Success
                         }
                         SuccessMode.CUSTOM -> {
                             if (step.clickFirst && outcome.point != null) {
@@ -1172,7 +1325,13 @@ object WorkflowRunner {
                                     )
                                 }
                             }
-                            executeEmbedded(step.customSteps, index, chain, depth)
+                            when (val result = executeEmbedded(step.customSteps, index, chain, depth)) {
+                                is StepResult.Success -> {
+                                    if (step.breakLoopOnSuccess) StepResult.BreakLoop
+                                    else result
+                                }
+                                else -> result
+                            }
                         }
                         SuccessMode.JUMP -> {
                             // Click-first applies in Jump mode too: the
@@ -1187,7 +1346,12 @@ object WorkflowRunner {
                             }
                             when (val pre = executeEmbedded(step.customSteps, index, chain, depth)) {
                                 is StepResult.Success -> {
-                                    if (step.jumpTarget < 0) {
+                                    // Break wins over jump: the pre-jump
+                                    // actions ran, but the run ends
+                                    // instead of jumping (see Step).
+                                    if (step.breakLoopOnSuccess) {
+                                        StepResult.BreakLoop
+                                    } else if (step.jumpTarget < 0) {
                                         StepResult.Failed(
                                             failMessage(
                                                 index,
@@ -1220,9 +1384,22 @@ object WorkflowRunner {
                         attempt++
                     } else {
                         return when (step.afterRetryMode) {
-                            AfterRetryMode.IGNORE -> StepResult.Success
+                            AfterRetryMode.IGNORE -> {
+                                if (step.breakLoopOnFailure) StepResult.BreakLoop
+                                else StepResult.Success
+                            }
                             AfterRetryMode.CUSTOM -> {
-                                executeEmbedded(step.afterRetrySteps, index, chain, depth)
+                                when (
+                                    val result = executeEmbedded(
+                                        step.afterRetrySteps, index, chain, depth
+                                    )
+                                ) {
+                                    is StepResult.Success -> {
+                                        if (step.breakLoopOnFailure) StepResult.BreakLoop
+                                        else result
+                                    }
+                                    else -> result
+                                }
                             }
                             AfterRetryMode.JUMP -> {
                                 when (
@@ -1231,7 +1408,10 @@ object WorkflowRunner {
                                     )
                                 ) {
                                     is StepResult.Success -> {
-                                        if (step.afterRetryJumpTarget < 0) {
+                                        // Break wins over jump here too.
+                                        if (step.breakLoopOnFailure) {
+                                            StepResult.BreakLoop
+                                        } else if (step.afterRetryJumpTarget < 0) {
                                             StepResult.Failed(
                                                 failMessage(
                                                     index,
@@ -1279,6 +1459,10 @@ object WorkflowRunner {
                 is StepResult.Success, is StepResult.Jump -> {
                     if (!sleepPausable(subStep.waitAfterMs)) return StepResult.Stopped
                 }
+                // Break loop propagates out of sub-action lists too:
+                // a jump target is list-local, but ending the run's
+                // loop is not.
+                is StepResult.BreakLoop -> return result
                 is StepResult.Stopped -> return StepResult.Stopped
                 is StepResult.Failed -> return result
             }

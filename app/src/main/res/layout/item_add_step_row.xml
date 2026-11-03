@@ -12,7 +12,7 @@
 
     <ImageView
         android:id="@+id/row_icon"
-        android:tint="?attr/colorControlNormal"
+        android:tint="@color/ref_title"
         android:layout_width="24dp"
         android:layout_height="24dp"
         android:layout_marginEnd="12dp" />
@@ -33,7 +33,7 @@
                 android:id="@+id/row_title"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textColor="@color/text_primary"
+                android:textColor="@color/ref_title"
                 android:textSize="16sp"
                 android:textStyle="bold" />
 
@@ -45,11 +45,11 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
-                android:background="@color/accent"
+                android:background="@color/ref_green"
                 android:paddingHorizontal="6dp"
                 android:paddingVertical="2dp"
                 android:text="@string/add_badge_new"
-                android:textColor="@color/accent_text"
+                android:textColor="#FFFFFF"
                 android:textSize="11sp"
                 android:textStyle="bold"
                 android:visibility="gone" />
@@ -60,7 +60,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
-            android:textColor="@color/text_secondary"
+            android:textColor="@color/ref_summary"
             android:textSize="14sp" />
     </LinearLayout>
 </LinearLayout>

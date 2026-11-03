@@ -17,7 +17,7 @@
     <com.google.android.material.card.MaterialCardView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        app:cardBackgroundColor="@color/card_background"
+        app:cardBackgroundColor="@color/ref_card"
         app:cardCornerRadius="12dp"
         app:cardElevation="2dp">
 
@@ -38,7 +38,7 @@
                     android:id="@+id/step_number"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:textColor="@color/text_primary"
+                    android:textColor="@color/ref_title"
                     android:textSize="16sp"
                     android:textStyle="bold" />
 
@@ -47,7 +47,7 @@
                     android:layout_width="24dp"
                     android:layout_height="24dp"
                     android:layout_marginStart="8dp"
-                    android:tint="?attr/colorControlNormal" />
+                    android:tint="@color/ref_title" />
 
                 <TextView
                     android:id="@+id/step_title"
@@ -57,7 +57,7 @@
                     android:layout_weight="1"
                     android:ellipsize="end"
                     android:maxLines="1"
-                    android:textColor="@color/text_primary"
+                    android:textColor="@color/ref_title"
                     android:textSize="16sp"
                     android:textStyle="bold" />
 
@@ -67,7 +67,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="8dp"
-                    android:textColor="@color/text_secondary"
+                    android:textColor="@color/ref_summary"
                     android:textSize="14sp"
                     android:visibility="gone" />
 
@@ -78,7 +78,7 @@
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="@string/row_edit_desc"
                     android:src="@android:drawable/ic_menu_edit"
-                    android:tint="?attr/colorControlNormal" />
+                    android:tint="@color/ref_title" />
 
                 <ImageButton
                     android:id="@+id/btn_preview"
@@ -87,7 +87,7 @@
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="@string/row_preview_desc"
                     android:src="@android:drawable/ic_menu_view"
-                    android:tint="?attr/colorControlNormal" />
+                    android:tint="@color/ref_title" />
 
                 <!-- Count badge: always shown, default 1. -->
                 <TextView
@@ -98,7 +98,7 @@
                     android:background="@drawable/pill_background"
                     android:paddingHorizontal="8dp"
                     android:paddingVertical="4dp"
-                    android:textColor="@color/accent"
+                    android:textColor="@color/ref_green"
                     android:textSize="13sp"
                     android:textStyle="bold" />
 
@@ -134,7 +134,7 @@
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="@string/row_swap_desc"
                     android:src="@android:drawable/ic_menu_rotate"
-                    android:tint="?attr/colorControlNormal" />
+                    android:tint="@color/ref_title" />
 
                 <ImageButton
                     android:id="@+id/btn_delete"
@@ -143,7 +143,7 @@
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Delete step"
                     android:src="@android:drawable/ic_menu_delete"
-                    android:tint="@color/danger" />
+                    android:tint="@color/ref_red" />
 
                 <ImageButton
                     android:id="@+id/btn_step_play"
@@ -152,7 +152,7 @@
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Run just this step"
                     android:src="@android:drawable/ic_media_play"
-                    android:tint="@color/accent" />
+                    android:tint="@color/ref_green" />
 
                 <View
                     android:layout_width="0dp"
@@ -168,7 +168,7 @@
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Step actions"
                     android:src="@drawable/ic_more"
-                    android:tint="?attr/colorControlNormal" />
+                    android:tint="@color/ref_title" />
             </LinearLayout>
 
             <!-- Recognition branch pills, on the row (GONE otherwise).
@@ -192,7 +192,7 @@
                     android:focusable="true"
                     android:paddingHorizontal="10dp"
                     android:paddingVertical="6dp"
-                    android:textColor="@color/accent"
+                    android:textColor="@color/ref_green"
                     android:textSize="13sp"
                     android:textStyle="bold" />
 
@@ -206,7 +206,7 @@
                     android:focusable="true"
                     android:paddingHorizontal="10dp"
                     android:paddingVertical="6dp"
-                    android:textColor="@color/danger"
+                    android:textColor="@color/ref_red"
                     android:textSize="13sp"
                     android:textStyle="bold" />
             </LinearLayout>
@@ -231,7 +231,7 @@
             android:layout_width="18dp"
             android:layout_height="18dp"
             android:src="@drawable/ic_step_wait"
-            android:tint="@color/text_secondary" />
+            android:tint="@color/ref_summary" />
 
         <TextView
             android:id="@+id/step_wait"
@@ -240,7 +240,7 @@
             android:layout_marginStart="6dp"
             android:clickable="true"
             android:focusable="true"
-            android:textColor="@color/text_secondary"
+            android:textColor="@color/ref_summary"
             android:textSize="14sp" />
 
         <ImageButton
@@ -251,6 +251,6 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/row_wait_edit_desc"
             android:src="@android:drawable/ic_menu_edit"
-            android:tint="@color/text_secondary" />
+            android:tint="@color/ref_summary" />
     </LinearLayout>
 </LinearLayout>

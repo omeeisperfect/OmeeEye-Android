@@ -86,8 +86,6 @@
     <string name="step_no_settings">This step has no settings to change</string>
     <string name="no_snippets_yet">No snippets yet. Add one in Library first.</string>
     <string name="choose_snippet">Choose a snippet</string>
-    <string name="wait_min_title">Minimum wait (ms)</string>
-    <string name="wait_max_title">Maximum wait (ms)</string>
     <string name="start_row_title">Start row</string>
     <string name="repeat_title">Repeat (0 = all remaining rows)</string>
     <string name="intent_uri_hint">Link or URI, for example https://example.com</string>

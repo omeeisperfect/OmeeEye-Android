@@ -9,4 +9,9 @@
     <string name="run_qs_tile_not_found">Quick setting tile not found</string>
     <string name="run_power_dialog_unavailable">Power dialog is not available on this device</string>
     <string name="run_recognition_too_deep">Recognition nesting too deep</string>
+
+    <!-- Loop action runner failures (reference-workflow clone) -->
+    <string name="run_loop_no_target">Loop target not found</string>
+    <string name="run_loop_self">Loop action cannot repeat itself</string>
+    <string name="run_loop_too_deep">Loop nesting too deep</string>
 </resources>

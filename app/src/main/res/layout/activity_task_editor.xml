@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/background"
+    android:background="@color/ref_page_bg"
     android:orientation="vertical"
     android:padding="16dp">
 
@@ -19,7 +19,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:textColor="@color/text_primary"
+            android:textColor="@color/ref_title"
             android:textSize="22sp"
             android:textStyle="bold" />
 
@@ -31,7 +31,7 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/editor_rename_desc"
             android:src="@android:drawable/ic_menu_edit"
-            android:tint="@color/text_primary" />
+            android:tint="@color/ref_title" />
 
         <!-- "?": short help dialog describing the editor. -->
         <TextView
@@ -44,7 +44,7 @@
             android:contentDescription="@string/editor_help_desc"
             android:gravity="center"
             android:text="?"
-            android:textColor="@color/accent"
+            android:textColor="@color/ref_green"
             android:textSize="22sp"
             android:textStyle="bold" />
 
@@ -56,7 +56,7 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/editor_data"
             android:src="@android:drawable/ic_menu_more"
-            android:tint="@color/text_primary" />
+            android:tint="@color/ref_title" />
     </LinearLayout>
 
     <!-- Workflow NAME (a name, not a location, so typing it is fine). -->
@@ -67,7 +67,9 @@
         android:layout_marginTop="12dp"
         android:hint="@string/workflow_name_hint"
         android:inputType="text"
-        android:singleLine="true" />
+        android:singleLine="true"
+        android:textColor="@color/ref_title"
+        android:textColorHint="@color/ref_summary" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/step_list"
@@ -94,8 +96,10 @@
             android:layout_weight="1"
             android:minWidth="0dp"
             android:paddingHorizontal="4dp"
+            android:textColor="@color/ref_title"
             android:textSize="14sp"
-            android:text="@string/editor_add" />
+            android:text="@string/editor_add"
+            app:strokeColor="@color/ref_summary" />
 
         <Button
             android:id="@+id/btn_cancel"
@@ -106,8 +110,10 @@
             android:layout_weight="1"
             android:minWidth="0dp"
             android:paddingHorizontal="4dp"
+            android:textColor="@color/ref_title"
             android:textSize="14sp"
-            android:text="@string/editor_cancel" />
+            android:text="@string/editor_cancel"
+            app:strokeColor="@color/ref_summary" />
 
         <Button
             android:id="@+id/btn_save"
@@ -115,6 +121,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
+            android:backgroundTint="@color/ref_green"
             android:minWidth="0dp"
             android:paddingHorizontal="4dp"
             android:textSize="14sp"

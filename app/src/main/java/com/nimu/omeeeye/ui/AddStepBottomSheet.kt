@@ -216,6 +216,11 @@ class AddStepBottomSheet : BottomSheetDialogFragment() {
                     R.drawable.ic_step_power,
                     R.string.step_power_dialog, R.string.step_power_dialog_desc,
                     StepType.POWER_DIALOG, false
+                ),
+                Row(
+                    R.drawable.ic_step_loop,
+                    R.string.step_loop, R.string.step_loop_desc,
+                    StepType.LOOP_ACTION, false
                 )
             )
         )

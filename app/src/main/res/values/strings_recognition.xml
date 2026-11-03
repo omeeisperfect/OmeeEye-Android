@@ -10,7 +10,6 @@
     <string name="rec_title_ocr">Text recognition (OCR)</string>
 
     <!-- Section headers -->
-    <string name="rec_section_identification">Identification</string>
     <string name="rec_section_success">Actions after successful recognition</string>
     <string name="rec_section_retry">Actions after recognition failure: retry</string>
     <string name="rec_section_after_retry">Actions after the retry</string>

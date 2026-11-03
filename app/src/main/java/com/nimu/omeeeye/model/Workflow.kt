@@ -54,7 +54,14 @@ enum class StepType {
     // added separately by later builders.
     SLIDE_LIST,
     QS_TILE,
-    POWER_DIALOG
+    POWER_DIALOG,
+    // Reference-workflow clone: Loop action ("Copy action" in the
+    // reference dialog) — repeat one existing step of the SAME
+    // workflow [loopCount] times. The target is stored by step ID
+    // ([loopTargetId]), never by position, so inserting, deleting or
+    // reordering other steps cannot retarget the loop. A loop step
+    // whose target was deleted fails cleanly at run time.
+    LOOP_ACTION
 }
 
 enum class NavKey {
@@ -183,6 +190,29 @@ data class Step(
     // after-retry JUMP mode.
     val afterRetrySteps: List<Step> = emptyList(),
     val afterRetryJumpTarget: Int = -1,
+    // ---- Break loop (reference-workflow clone) ----
+    // Success section: when true, a successful recognition ends the
+    // whole run (all remaining steps, workflow cycles and data
+    // iterations are skipped) instead of continuing to the next step.
+    // Failure section: when true, the same end-of-run happens once
+    // the retries are exhausted and the after-retry handling has run.
+    // Both default to false, so old workflows behave exactly as
+    // before. When a break flag is set AND the matching mode is JUMP,
+    // the break wins: the pre-jump actions still run, but the jump
+    // itself is skipped and the run ends (a break and a jump
+    // contradict each other; the explicit break is honoured).
+    val breakLoopOnSuccess: Boolean = false,
+    val breakLoopOnFailure: Boolean = false,
+    // ---- Loop action (reference-workflow clone) ----
+    // LOOP_ACTION only: id of the step to repeat ("" = none chosen),
+    // and how many times to run it (clamped 1..99 by the runner;
+    // 1 = run once, i.e. a plain copy). The target step's own
+    // waitAfterMs is NOT applied between repeats (the loop step's own
+    // waitAfterMs applies once after the loop, like per-step cycles);
+    // a Jump or Break-loop result from the target escapes the loop
+    // and applies to the run.
+    val loopTargetId: String = "",
+    val loopCount: Int = 1,
     // ---- Advanced actions ----
     // WAIT_RANDOM bounds (ms).
     val waitMinMs: Long = 0,

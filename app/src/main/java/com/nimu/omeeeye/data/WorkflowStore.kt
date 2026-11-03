@@ -182,6 +182,10 @@ object WorkflowStore {
         s.afterRetrySteps.forEach { after.put(stepToJson(it)) }
         put("afterRetrySteps", after)
         put("afterRetryJumpTarget", s.afterRetryJumpTarget)
+        put("breakLoopOnSuccess", s.breakLoopOnSuccess)
+        put("breakLoopOnFailure", s.breakLoopOnFailure)
+        put("loopTargetId", s.loopTargetId)
+        put("loopCount", s.loopCount)
         put("waitMinMs", s.waitMinMs)
         put("waitMaxMs", s.waitMaxMs)
         put("intentUri", s.intentUri)
@@ -268,6 +272,10 @@ object WorkflowStore {
             ),
             afterRetrySteps = stepsFromArray(obj.optJSONArray("afterRetrySteps")),
             afterRetryJumpTarget = obj.optInt("afterRetryJumpTarget", -1),
+            breakLoopOnSuccess = obj.optBoolean("breakLoopOnSuccess", false),
+            breakLoopOnFailure = obj.optBoolean("breakLoopOnFailure", false),
+            loopTargetId = obj.optString("loopTargetId", ""),
+            loopCount = obj.optInt("loopCount", 1),
             waitMinMs = obj.optLong("waitMinMs", 0),
             waitMaxMs = obj.optLong("waitMaxMs", 1000),
             intentUri = obj.optString("intentUri", ""),
