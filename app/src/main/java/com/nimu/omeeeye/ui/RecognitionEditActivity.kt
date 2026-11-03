@@ -1,5 +1,6 @@
 package com.nimu.omeeeye.ui
 
+import android.content.DialogInterface
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.os.Build
@@ -14,6 +15,7 @@ import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.NumberPicker
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.TextView
@@ -2117,8 +2119,8 @@ class RecognitionEditActivity : AppCompatActivity() {
         }
         AlertDialog.Builder(this)
             .setTitle(R.string.rec_type_swipe)
-            .setView(picker)
-            .setPositiveButton(R.string.ok) { _, _ ->
+            .setView(picker as View)
+            .setPositiveButton(R.string.ok) { _: DialogInterface, _: Int ->
                 launchSubSwipePick(listKey, index, picker.value * 100L)
             }
             .setNegativeButton(R.string.cancel, null)
@@ -2829,8 +2831,8 @@ class RecognitionEditActivity : AppCompatActivity() {
         }
         AlertDialog.Builder(this)
             .setTitle(R.string.rec_wait_title)
-            .setView(picker)
-            .setPositiveButton(R.string.ok) { _, _ ->
+            .setView(picker as View)
+            .setPositiveButton(R.string.ok) { _: DialogInterface, _: Int ->
                 val old = subActionList(listKey).getOrNull(index)
                 putSubAction(
                     listKey,
