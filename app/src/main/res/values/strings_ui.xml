@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Content descriptions for the ic_ui_* workflow icons. Values mirror
+     the existing recognition-editor strings exactly, so TalkBack output
+     is unchanged; only the resource names are new (ui_ prefix). All
+     English, no business elements. -->
+<resources>
+    <string name="ui_judgment_help_desc">Judgment method</string>
+    <string name="ui_area_help_desc">Recognition area</string>
+    <string name="ui_button_text_edit_desc">Button text</string>
+    <string name="ui_tolerance_edit_desc">Color tolerance</string>
+    <string name="ui_retry_count_edit_desc">number of retries</string>
+    <string name="ui_retry_delay_edit_desc">Delay time</string>
+    <string name="ui_cycles_edit_desc">Cycles</string>
+    <string name="ui_sub_list_desc">Edit action</string>
+    <string name="ui_sub_delete_desc">Delete</string>
+</resources>

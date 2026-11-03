@@ -1,16 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Running panel: shown while a workflow is executing. Dark panel in
-     both themes (floating_bg / overlay_bar). Reference order for the
-     controls this app actually offers: red stop, pause, timer (+ step
-     count), Back/Home/Recents, more (3-dot). The reference's undo /
-     target / wait-indicator / OCR / image-recognition / palette slots
-     are deliberately absent: no behaviour exists behind them, and
-     drawing them would be fake functionality. All view ids are
-     unchanged, so FloatingService wiring is untouched. -->
+<!-- Running panel: shown while a workflow is executing. Same floating
+     style as the idle and record bars: rounded translucent dark panel
+     (ic_float_panel_bg), inset from the screen edges by the service's
+     window position — never full-width edge-to-edge. Reference order:
+     row 1 = red stop, pause, undo, elapsed timer (mm:ss), step count,
+     red recording dot, expand chevron with red dot badge; row 2 =
+     target, Back, Home, Recents, rocket; row 3 = wait countdown (only
+     while a Wait step runs), OCR, image, palette, 3-dot menu.
+     Undo / target / rocket / OCR / image / palette are visual-only
+     here: FloatingService wires each to an honest "Coming soon"
+     toast, never a fake action. Existing ids are unchanged. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
-    android:background="@drawable/floating_bg"
+    android:background="@drawable/ic_float_panel_bg"
     android:orientation="vertical"
     android:padding="10dp">
 
@@ -26,7 +29,7 @@
             android:layout_height="36dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/floating_stop"
-            android:src="@drawable/stop_square" />
+            android:src="@drawable/ic_float_stop" />
 
         <ImageButton
             android:id="@+id/run_btn_pause"
@@ -34,7 +37,16 @@
             android:layout_height="44dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/floating_pause"
-            android:src="@android:drawable/ic_media_pause"
+            android:src="@drawable/ic_float_pause"
+            android:tint="@color/overlay_bar_text" />
+
+        <ImageButton
+            android:id="@+id/run_btn_undo"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/float_desc_undo"
+            android:src="@drawable/ic_float_undo"
             android:tint="@color/overlay_bar_text" />
 
         <TextView
@@ -42,7 +54,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginStart="6dp"
-            android:text="00:00:00"
+            android:text="00:00"
             android:textColor="@color/overlay_bar_text"
             android:textSize="14sp"
             android:textStyle="bold" />
@@ -51,47 +63,137 @@
             android:id="@+id/run_text_step"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
+            android:layout_marginStart="8dp"
             android:text="Step: 0/0"
             android:textColor="@color/overlay_bar_text"
             android:textSize="14sp" />
+
+        <View
+            android:layout_width="10dp"
+            android:layout_height="10dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/ic_float_dot_red" />
+
+        <FrameLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content">
+
+            <ImageButton
+                android:id="@+id/run_btn_expand"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/float_desc_collapse"
+                android:src="@drawable/ic_float_chevron_up"
+                android:tint="@color/overlay_bar_text" />
+
+            <View
+                android:layout_width="10dp"
+                android:layout_height="10dp"
+                android:layout_gravity="top|end"
+                android:background="@drawable/ic_float_dot_red" />
+        </FrameLayout>
     </LinearLayout>
 
     <LinearLayout
+        android:id="@+id/run_row_nav"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <Button
+        <ImageButton
+            android:id="@+id/run_btn_target"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/float_desc_target_run"
+            android:src="@drawable/ic_float_target"
+            android:tint="@color/overlay_bar_text" />
+
+        <ImageButton
             android:id="@+id/run_btn_back"
-            android:layout_width="52dp"
+            android:layout_width="44dp"
             android:layout_height="44dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/floating_back"
-            android:text="←"
-            android:textColor="@color/overlay_bar_text"
-            android:textSize="20sp" />
+            android:src="@drawable/ic_float_back"
+            android:tint="@color/overlay_bar_text" />
 
-        <Button
+        <ImageButton
             android:id="@+id/run_btn_home"
-            android:layout_width="52dp"
+            android:layout_width="44dp"
             android:layout_height="44dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/floating_home"
-            android:text="⌂"
-            android:textColor="@color/overlay_bar_text"
-            android:textSize="20sp" />
+            android:src="@drawable/ic_float_home"
+            android:tint="@color/overlay_bar_text" />
 
-        <Button
+        <ImageButton
             android:id="@+id/run_btn_recents"
-            android:layout_width="52dp"
+            android:layout_width="44dp"
             android:layout_height="44dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/floating_recents"
-            android:text="▢"
+            android:src="@drawable/ic_float_recents"
+            android:tint="@color/overlay_bar_text" />
+
+        <ImageButton
+            android:id="@+id/run_btn_rocket"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/float_desc_rocket"
+            android:src="@drawable/ic_float_rocket"
+            android:tint="@color/overlay_bar_text" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/run_row_tools"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/run_text_wait"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:layout_marginStart="2dp"
+            android:gravity="center"
+            android:minWidth="44dp"
+            android:text="0s"
             android:textColor="@color/overlay_bar_text"
-            android:textSize="20sp" />
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <ImageButton
+            android:id="@+id/run_btn_ocr"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/float_desc_ocr"
+            android:src="@drawable/ic_float_ocr"
+            android:tint="@color/overlay_bar_text" />
+
+        <ImageButton
+            android:id="@+id/run_btn_image"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/float_desc_image"
+            android:src="@drawable/ic_float_image"
+            android:tint="@color/overlay_bar_text" />
+
+        <ImageButton
+            android:id="@+id/run_btn_palette"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/float_desc_palette"
+            android:src="@drawable/ic_float_palette"
+            android:tint="@color/overlay_bar_text" />
 
         <ImageButton
             android:id="@+id/run_btn_more"
@@ -99,7 +201,7 @@
             android:layout_height="44dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/floating_more"
-            android:src="@android:drawable/ic_menu_more"
+            android:src="@drawable/ic_float_menu"
             android:tint="@color/overlay_bar_text" />
     </LinearLayout>
 

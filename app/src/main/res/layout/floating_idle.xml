@@ -1,14 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Idle floating bar: shown when a workflow is bound but not running.
-     Dark pill in both themes (floating_bg / overlay_bar), in reference
-     order: configure (wrench), play, target, close, expand. -->
+     Same floating style as the record bar and running panel:
+     rounded translucent dark panel (ic_float_panel_bg), inset from
+     the screen edges by the service's window position — never
+     full-width edge-to-edge. Items and ids unchanged, so the existing
+     behaviour (configure, play, target pick, close, expand) is kept;
+     only the icons and panel background are restyled. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
-    android:background="@drawable/floating_bg"
+    android:background="@drawable/ic_float_panel_bg"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:padding="8dp">
+    android:padding="6dp">
 
     <ImageButton
         android:id="@+id/btn_configure"
@@ -16,7 +20,7 @@
         android:layout_height="44dp"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:contentDescription="@string/floating_configure"
-        android:src="@android:drawable/ic_menu_manage"
+        android:src="@drawable/ic_float_wrench"
         android:tint="@color/overlay_bar_text" />
 
     <ImageButton
@@ -25,7 +29,7 @@
         android:layout_height="44dp"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:contentDescription="@string/floating_play"
-        android:src="@android:drawable/ic_media_play"
+        android:src="@drawable/ic_float_play"
         android:tint="@color/overlay_bar_text" />
 
     <ImageButton
@@ -34,7 +38,7 @@
         android:layout_height="44dp"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:contentDescription="@string/floating_target"
-        android:src="@android:drawable/ic_menu_mylocation"
+        android:src="@drawable/ic_float_target"
         android:tint="@color/overlay_bar_text" />
 
     <ImageButton
@@ -43,20 +47,16 @@
         android:layout_height="44dp"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:contentDescription="@string/floating_close"
-        android:src="@android:drawable/ic_menu_close_clear_cancel"
+        android:src="@drawable/ic_float_close"
         android:tint="@color/overlay_bar_text" />
 
-    <TextView
+    <ImageButton
         android:id="@+id/btn_expand"
         android:layout_width="44dp"
         android:layout_height="44dp"
         android:background="?attr/selectableItemBackgroundBorderless"
-        android:clickable="true"
         android:contentDescription="@string/floating_expand"
-        android:focusable="true"
-        android:gravity="center"
-        android:text="»"
-        android:textColor="@color/overlay_bar_text"
-        android:textSize="24sp" />
+        android:src="@drawable/ic_float_chevron_right"
+        android:tint="@color/overlay_bar_text" />
 
 </LinearLayout>

@@ -20,9 +20,12 @@ import android.provider.Settings
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.text.TextUtils
+import android.util.TypedValue
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -288,12 +291,28 @@ class OverlayPickService : Service() {
             // Clickable so taps on the bar itself never fall through to
             // the draw view below and become accidental picks.
             isClickable = true
-            setBackgroundColor(ContextCompat.getColor(context, R.color.overlay_bar))
-            setPadding(pad, pad, pad, pad)
+            // Record mode only: the same floating style as the idle
+            // and running bars — rounded translucent dark panel, inset
+            // from the screen edges, never full-width edge-to-edge.
+            // Point / swipe / region pick bars keep their old style.
+            if (mode == MODE_RECORD) {
+                setBackgroundResource(R.drawable.ic_float_panel_bg)
+                val barPad = (8 * density).toInt()
+                setPadding(barPad, barPad, barPad, barPad)
+            } else {
+                setBackgroundColor(ContextCompat.getColor(context, R.color.overlay_bar))
+                setPadding(pad, pad, pad, pad)
+            }
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
-            ).apply { gravity = Gravity.TOP }
+            ).apply {
+                gravity = Gravity.TOP
+                if (mode == MODE_RECORD) {
+                    val m = (16 * density).toInt()
+                    setMargins(m, m, m, 0)
+                }
+            }
         }
         val row1 = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -304,7 +323,10 @@ class OverlayPickService : Service() {
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
         }
-        bar.addView(row1)
+        // In record mode the floating icon bar (buildRecordBar,
+        // below) replaces this text-button row entirely; the row is
+        // still built but never attached, so its buttons cannot fire.
+        if (mode != MODE_RECORD) bar.addView(row1)
         hintView = TextView(this).apply {
             text = when (mode) {
                 MODE_SWIPE -> getString(R.string.pick_start_hint)
@@ -351,43 +373,12 @@ class OverlayPickService : Service() {
         }
         row1.addView(cancel)
         if (mode == MODE_RECORD) {
-            // Record menu: tapping a button records that action as a
-            // step (in order, with the taps/swipes around it). These
+            // Floating icon bar: same actions as the old text-button
+            // menu row (Back / Home / Recent / Wait / Launch app, plus
+            // Stop and Cancel), only restyled as icons. Taps on these
             // buttons sit in the overlay bar, so they never reach the
             // app underneath as real key presses.
-            val menuRow = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                isClickable = true
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-            }
-            fun menuButton(label: String, onClick: () -> Unit): Button =
-                Button(this).apply {
-                    text = label
-                    layoutParams = LinearLayout.LayoutParams(
-                        0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
-                    )
-                    setOnClickListener { onClick() }
-                }
-            menuRow.addView(menuButton(getString(R.string.record_menu_back)) {
-                recordNav(NavKey.BACK)
-            })
-            menuRow.addView(menuButton(getString(R.string.record_menu_home)) {
-                recordNav(NavKey.HOME)
-            })
-            menuRow.addView(menuButton(getString(R.string.record_menu_recent)) {
-                recordNav(NavKey.RECENTS)
-            })
-            menuRow.addView(menuButton(getString(R.string.record_menu_wait)) {
-                recordWait()
-            })
-            menuRow.addView(menuButton(getString(R.string.record_menu_launch)) {
-                toggleAppPicker()
-            })
-            bar.addView(menuRow)
+            buildRecordBar(bar)
         }
         root.addView(bar)
 
@@ -516,7 +507,7 @@ class OverlayPickService : Service() {
                                     drawView?.addDot(upX, upY)
                                 }
                                 countView?.text = getString(
-                                    R.string.overlay_record_count, recorded.size
+                                    R.string.float_record_steps, recorded.size
                                 )
                             }
                             true
@@ -726,8 +717,97 @@ class OverlayPickService : Service() {
 
     // ---------- Record menu actions (MODE_RECORD only) ----------
 
+    /**
+     * Floating record bar (MODE_RECORD only): a compact one-line hint
+     * on top, then one row of icon buttons — Stop (red square),
+     * Cancel (X), Back, Home, Recents, Wait (clock), Launch app
+     * (grid) — plus the live "Steps: N" count. Every button keeps the
+     * exact behaviour the old text buttons had: Stop finishes the
+     * recording, Cancel discards it, nav buttons record a navigation
+     * step, Wait records a wait step, Launch opens the app picker.
+     * Taps/swipes on the screen below and the live swipe path are
+     * untouched (see the draw view's touch listener).
+     */
+    private fun buildRecordBar(bar: LinearLayout) {
+        val density = resources.displayMetrics.density
+        val iconSize = (36 * density).toInt()
+        val white = ContextCompat.getColor(this, R.color.overlay_bar_text)
+        hintView = TextView(this).apply {
+            text = getString(R.string.float_record_hint)
+            setTextColor(white)
+            textSize = 12f
+            isSingleLine = true
+            ellipsize = TextUtils.TruncateAt.END
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = (6 * density).toInt() }
+        }
+        bar.addView(hintView)
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            isClickable = true
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+        fun iconButton(iconRes: Int, descRes: Int, tintWhite: Boolean, onClick: () -> Unit): ImageButton =
+            ImageButton(this).apply {
+                setImageResource(iconRes)
+                contentDescription = getString(descRes)
+                // Borderless ripple, as in the XML bars.
+                val outValue = TypedValue()
+                theme.resolveAttribute(
+                    android.R.attr.selectableItemBackgroundBorderless, outValue, true
+                )
+                setBackgroundResource(outValue.resourceId)
+                if (tintWhite) {
+                    imageTintList = android.content.res.ColorStateList.valueOf(white)
+                }
+                scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+                layoutParams = LinearLayout.LayoutParams(iconSize, iconSize)
+                setOnClickListener { onClick() }
+            }
+        row.addView(iconButton(R.drawable.ic_float_stop, R.string.float_desc_record_stop, false) {
+            finishRecord()
+        })
+        row.addView(iconButton(R.drawable.ic_float_close, R.string.float_desc_record_cancel, true) {
+            finishCancelled()
+        })
+        row.addView(iconButton(R.drawable.ic_float_back, R.string.float_desc_record_back, true) {
+            recordNav(NavKey.BACK)
+        })
+        row.addView(iconButton(R.drawable.ic_float_home, R.string.float_desc_record_home, true) {
+            recordNav(NavKey.HOME)
+        })
+        row.addView(iconButton(R.drawable.ic_float_recents, R.string.float_desc_record_recents, true) {
+            recordNav(NavKey.RECENTS)
+        })
+        row.addView(iconButton(R.drawable.ic_float_wait, R.string.float_desc_record_wait, true) {
+            recordWait()
+        })
+        row.addView(iconButton(R.drawable.ic_float_apps, R.string.float_desc_record_launch, true) {
+            toggleAppPicker()
+        })
+        countView = TextView(this).apply {
+            text = getString(R.string.float_record_steps, recorded.size)
+            setTextColor(white)
+            textSize = 13f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setPadding((6 * density).toInt(), 0, 0, 0)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+        row.addView(countView)
+        bar.addView(row)
+    }
+
     private fun refreshRecordCount() {
-        countView?.text = getString(R.string.overlay_record_count, recorded.size)
+        countView?.text = getString(R.string.float_record_steps, recorded.size)
     }
 
     private fun recordNav(key: NavKey) {

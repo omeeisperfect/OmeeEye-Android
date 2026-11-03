@@ -34,8 +34,8 @@
         android:layout_height="32dp"
         android:layout_marginStart="8dp"
         android:background="?attr/selectableItemBackgroundBorderless"
-        android:contentDescription="@string/rec_sub_list_desc"
-        android:src="@android:drawable/ic_menu_sort_by_size"
+        android:contentDescription="@string/ui_sub_list_desc"
+        android:src="@drawable/ic_ui_list"
         android:tint="@color/ref_title" />
 
     <ImageButton
@@ -44,7 +44,7 @@
         android:layout_height="32dp"
         android:layout_marginStart="4dp"
         android:background="?attr/selectableItemBackgroundBorderless"
-        android:contentDescription="@string/rec_delete"
-        android:src="@android:drawable/ic_menu_delete"
+        android:contentDescription="@string/ui_sub_delete_desc"
+        android:src="@drawable/ic_ref_delete"
         android:tint="@color/ref_red" />
 </LinearLayout>

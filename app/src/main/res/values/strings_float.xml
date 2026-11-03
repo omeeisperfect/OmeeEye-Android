@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Floating bars (idle / record / running): all strings for this
+     round live here, float_ prefixed, English only. No business
+     elements (no trial, paywall, ads, upsell, VIP). -->
+<resources>
+    <!-- Record bar -->
+    <string name="float_record_hint">Tap or swipe on the screen to record. Tap Stop when finished.</string>
+    <string name="float_record_steps">Steps: %1$d</string>
+    <string name="float_desc_record_stop">Stop recording</string>
+    <string name="float_desc_record_cancel">Cancel recording</string>
+    <string name="float_desc_record_back">Back key</string>
+    <string name="float_desc_record_home">Home key</string>
+    <string name="float_desc_record_recents">Recents key</string>
+    <string name="float_desc_record_wait">Insert wait</string>
+    <string name="float_desc_record_launch">Launch app</string>
+
+    <!-- Running panel: visual-only icons, honest "Coming soon" toasts -->
+    <string name="float_desc_undo">Undo</string>
+    <string name="float_desc_target_run">Target</string>
+    <string name="float_desc_rocket">Rocket</string>
+    <string name="float_desc_ocr">OCR</string>
+    <string name="float_desc_image">Image recognition</string>
+    <string name="float_desc_palette">Palette</string>
+    <string name="float_desc_expand">Expand panel</string>
+    <string name="float_desc_collapse">Collapse panel</string>
+    <string name="float_undo_soon">Undo coming soon</string>
+    <string name="float_target_soon">Target coming soon</string>
+    <string name="float_rocket_soon">Rocket coming soon</string>
+    <string name="float_ocr_soon">OCR coming soon</string>
+    <string name="float_image_soon">Image recognition coming soon</string>
+    <string name="float_palette_soon">Palette coming soon</string>
+</resources>

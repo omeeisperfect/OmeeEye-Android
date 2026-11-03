@@ -27,6 +27,7 @@ import com.nimu.omeeeye.engine.AutomationService
 import com.nimu.omeeeye.engine.WorkflowRunner
 import com.nimu.omeeeye.model.NavKey
 import com.nimu.omeeeye.model.Step
+import com.nimu.omeeeye.model.StepType
 
 /**
  * Hosts the two floating overlays. Requires "Display over other apps".
@@ -140,14 +141,40 @@ class FloatingService : Service() {
     private var timerText: TextView? = null
     private var stepText: TextView? = null
     private var pauseButton: ImageButton? = null
+    private var waitText: TextView? = null
+    private var navRow: View? = null
+    private var toolsRow: View? = null
+    private var expandButton: ImageButton? = null
+    private var runningExpanded = true
+    // Real wait countdown, runner-owned, no new runner field: when a
+    // WAIT step starts, its duration comes from the step itself and
+    // the start is anchored on the runner's elapsed clock (the same
+    // clock onTick reports, so paused time never counts down). The
+    // countdown refreshes on each runner tick (~500 ms); it is never
+    // a static label. WAIT_RANDOM has no known duration (the runner
+    // picks it at execution time), so it shows no countdown rather
+    // than a guessed one. waitAfterMs gaps between steps are not
+    // Wait steps and likewise show nothing.
+    private var waitDurationMs: Long = 0
+    private var waitStartElapsedMs: Long = 0
+    private var lastElapsedMs: Long = 0
 
     private val runnerListener = object : WorkflowRunner.Listener {
         override fun onStepChanged(index: Int, total: Int, step: Step) {
             stepText?.text = getString(R.string.step_format, index + 1, total)
+            if (step.type == StepType.WAIT && step.durationMs > 0) {
+                waitDurationMs = step.durationMs
+                waitStartElapsedMs = lastElapsedMs
+            } else {
+                waitDurationMs = 0
+            }
+            updateWaitText()
         }
 
         override fun onTick(elapsedMs: Long) {
+            lastElapsedMs = elapsedMs
             timerText?.text = formatTime(elapsedMs)
+            updateWaitText()
         }
 
         override fun onFinished(status: WorkflowRunner.Status, message: String?) {
@@ -278,7 +305,7 @@ class FloatingService : Service() {
         view.findViewById<View>(R.id.btn_target).visibility =
             fnVisibility(FloatingPanelPrefs.FN_TARGET)
         try {
-            windowManager.addView(view, overlayParams(y = 300))
+            windowManager.addView(view, overlayParams())
         } catch (e: Exception) {
             // addView used to throw out of onStartCommand uncaught
             // (permission revoked between check and add, or a bad
@@ -298,6 +325,12 @@ class FloatingService : Service() {
         timerText = view.findViewById(R.id.run_text_timer)
         stepText = view.findViewById(R.id.run_text_step)
         pauseButton = view.findViewById(R.id.run_btn_pause)
+        waitText = view.findViewById(R.id.run_text_wait)
+        navRow = view.findViewById(R.id.run_row_nav)
+        toolsRow = view.findViewById(R.id.run_row_tools)
+        expandButton = view.findViewById(R.id.run_btn_expand)
+        runningExpanded = true
+        waitDurationMs = 0
         view.findViewById<View>(R.id.run_btn_stop).setOnClickListener {
             // Terminal: the run ends fully, no resume after stop.
             WorkflowRunner.stop()
@@ -305,12 +338,38 @@ class FloatingService : Service() {
         pauseButton?.setOnClickListener {
             if (WorkflowRunner.isPaused()) {
                 WorkflowRunner.resume()
-                pauseButton?.setImageResource(android.R.drawable.ic_media_pause)
+                pauseButton?.setImageResource(R.drawable.ic_float_pause)
             } else {
                 WorkflowRunner.pause()
-                pauseButton?.setImageResource(android.R.drawable.ic_media_play)
+                pauseButton?.setImageResource(R.drawable.ic_float_play)
             }
         }
+        // Visual-only reference icons: no runner or recognition API
+        // behind them exists yet, so each tap says so honestly
+        // instead of faking an action or staying silently dead.
+        fun soonToast(messageRes: Int): View.OnClickListener =
+            View.OnClickListener {
+                Toast.makeText(this, messageRes, Toast.LENGTH_SHORT).show()
+            }
+        view.findViewById<View>(R.id.run_btn_undo).setOnClickListener(
+            soonToast(R.string.float_undo_soon)
+        )
+        view.findViewById<View>(R.id.run_btn_target).setOnClickListener(
+            soonToast(R.string.float_target_soon)
+        )
+        view.findViewById<View>(R.id.run_btn_rocket).setOnClickListener(
+            soonToast(R.string.float_rocket_soon)
+        )
+        view.findViewById<View>(R.id.run_btn_ocr).setOnClickListener(
+            soonToast(R.string.float_ocr_soon)
+        )
+        view.findViewById<View>(R.id.run_btn_image).setOnClickListener(
+            soonToast(R.string.float_image_soon)
+        )
+        view.findViewById<View>(R.id.run_btn_palette).setOnClickListener(
+            soonToast(R.string.float_palette_soon)
+        )
+        expandButton?.setOnClickListener { toggleRunningExpanded() }
         view.findViewById<View>(R.id.run_btn_back).setOnClickListener {
             AutomationService.instance?.pressKey(NavKey.BACK)
         }
@@ -336,8 +395,39 @@ class FloatingService : Service() {
             fnVisibility(FloatingPanelPrefs.FN_HOME)
         view.findViewById<View>(R.id.run_btn_recents).visibility =
             fnVisibility(FloatingPanelPrefs.FN_RECENTS)
-        windowManager.addView(view, overlayParams(y = 300))
+        windowManager.addView(view, overlayParams())
         runningView = view
+    }
+
+    /** Expand chevron: collapses rows 2-3 to a one-row bar, or brings
+     * them back. Row 1 (stop / pause / timer) always stays visible,
+     * so a collapsed panel can still stop the run. */
+    private fun toggleRunningExpanded() {
+        runningExpanded = !runningExpanded
+        val visibility = if (runningExpanded) View.VISIBLE else View.GONE
+        navRow?.visibility = visibility
+        toolsRow?.visibility = visibility
+        expandButton?.setImageResource(
+            if (runningExpanded) R.drawable.ic_float_chevron_up
+            else R.drawable.ic_float_chevron_down
+        )
+        expandButton?.contentDescription = getString(
+            if (runningExpanded) R.string.float_desc_collapse
+            else R.string.float_desc_expand
+        )
+    }
+
+    /** Real "Ns" wait countdown, or hidden when no Wait step runs. */
+    private fun updateWaitText() {
+        val text = waitText ?: return
+        if (waitDurationMs <= 0) {
+            text.visibility = View.GONE
+            return
+        }
+        val remaining = (waitDurationMs - (lastElapsedMs - waitStartElapsedMs))
+            .coerceAtLeast(0L)
+        text.text = "${(remaining + 999L) / 1000L}s"
+        text.visibility = View.VISIBLE
     }
 
     private fun openEditor(id: String, pickTarget: Boolean) {
@@ -360,7 +450,7 @@ class FloatingService : Service() {
     private fun fnVisibility(fn: String): Int =
         if (FloatingPanelPrefs.isEnabled(this, fn)) View.VISIBLE else View.GONE
 
-    private fun overlayParams(y: Int): WindowManager.LayoutParams {
+    private fun overlayParams(): WindowManager.LayoutParams {
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         } else {
@@ -375,8 +465,12 @@ class FloatingService : Service() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = 40
-            this.y = y
+            // Floating inset in dp (was a raw 40 px): the wrap-content
+            // panel never stretches edge-to-edge, and both side/top
+            // margins keep it visibly floating.
+            val margin = (16 * resources.displayMetrics.density).toInt()
+            x = margin
+            this.y = margin
         }
     }
 
@@ -403,6 +497,12 @@ class FloatingService : Service() {
         timerText = null
         stepText = null
         pauseButton = null
+        waitText = null
+        navRow = null
+        toolsRow = null
+        expandButton = null
+        runningExpanded = true
+        waitDurationMs = 0
     }
 
     private fun removeViews() {
@@ -444,11 +544,12 @@ class FloatingService : Service() {
             .build()
     }
 
+    /** Reference-style elapsed timer, mm:ss (minutes keep counting
+     * past 60, so a long run still reads correctly). */
     private fun formatTime(ms: Long): String {
         val totalSeconds = ms / 1000
-        val hours = totalSeconds / 3600
-        val minutes = (totalSeconds % 3600) / 60
+        val minutes = totalSeconds / 60
         val seconds = totalSeconds % 60
-        return String.format("%02d:%02d:%02d", hours, minutes, seconds)
+        return String.format("%02d:%02d", minutes, seconds)
     }
 }

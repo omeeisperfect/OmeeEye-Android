@@ -73,8 +73,8 @@
                     android:layout_height="20dp"
                     android:layout_marginStart="8dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="@string/rec_judgment_label"
-                    android:src="@android:drawable/ic_menu_help"
+                    android:contentDescription="@string/ui_judgment_help_desc"
+                    android:src="@drawable/ic_ui_help"
                     android:tint="@color/ref_title" />
 
                 <View
@@ -122,8 +122,8 @@
                     android:layout_height="20dp"
                     android:layout_marginStart="8dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="@string/rec_area_label"
-                    android:src="@android:drawable/ic_menu_help"
+                    android:contentDescription="@string/ui_area_help_desc"
+                    android:src="@drawable/ic_ui_help"
                     android:tint="@color/ref_title" />
 
                 <View
@@ -182,8 +182,8 @@
                         android:layout_height="20dp"
                         android:layout_marginStart="4dp"
                         android:background="?attr/selectableItemBackgroundBorderless"
-                        android:contentDescription="@string/rec_button_text_label"
-                        android:src="@android:drawable/ic_menu_edit"
+                        android:contentDescription="@string/ui_button_text_edit_desc"
+                        android:src="@drawable/ic_ui_edit"
                         android:tint="@color/ref_title" />
                 </LinearLayout>
 
@@ -391,8 +391,8 @@
                     android:layout_height="20dp"
                     android:layout_marginStart="4dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="@string/rec_tolerance_label"
-                    android:src="@android:drawable/ic_menu_edit"
+                    android:contentDescription="@string/ui_tolerance_edit_desc"
+                    android:src="@drawable/ic_ui_edit"
                     android:tint="@color/ref_summary" />
             </LinearLayout>
         </LinearLayout>
@@ -560,7 +560,7 @@
                     android:layout_width="20dp"
                     android:layout_height="20dp"
                     android:layout_marginStart="4dp"
-                    android:src="@android:drawable/ic_menu_help"
+                    android:src="@drawable/ic_ui_help"
                     android:tint="@color/ref_summary" />
 
                 <TextView
@@ -707,7 +707,7 @@
                     <ImageView
                         android:layout_width="20dp"
                         android:layout_height="20dp"
-                        android:src="@android:drawable/ic_menu_help"
+                        android:src="@drawable/ic_ui_help"
                         android:tint="@color/ref_summary" />
 
                     <TextView
@@ -866,8 +866,8 @@
                     android:layout_height="20dp"
                     android:layout_marginStart="4dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="@string/rec_retry_count_label"
-                    android:src="@android:drawable/ic_menu_edit"
+                    android:contentDescription="@string/ui_retry_count_edit_desc"
+                    android:src="@drawable/ic_ui_edit"
                     android:tint="@color/ref_summary" />
             </LinearLayout>
 
@@ -912,8 +912,8 @@
                     android:layout_height="20dp"
                     android:layout_marginStart="4dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="@string/rec_retry_delay_label"
-                    android:src="@android:drawable/ic_menu_edit"
+                    android:contentDescription="@string/ui_retry_delay_edit_desc"
+                    android:src="@drawable/ic_ui_edit"
                     android:tint="@color/ref_summary" />
             </LinearLayout>
         </LinearLayout>
@@ -1073,7 +1073,7 @@
                     <ImageView
                         android:layout_width="20dp"
                         android:layout_height="20dp"
-                        android:src="@android:drawable/ic_menu_help"
+                        android:src="@drawable/ic_ui_help"
                         android:tint="@color/ref_summary" />
 
                     <TextView
@@ -1198,8 +1198,8 @@
                 android:layout_height="20dp"
                 android:layout_marginStart="4dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="@string/rec_cycles_title"
-                android:src="@android:drawable/ic_menu_edit"
+                android:contentDescription="@string/ui_cycles_edit_desc"
+                android:src="@drawable/ic_ui_edit"
                 android:tint="@color/ref_summary" />
         </LinearLayout>
 
