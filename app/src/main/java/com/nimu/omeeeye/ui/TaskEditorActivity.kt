@@ -203,7 +203,16 @@ class TaskEditorActivity : AppCompatActivity() {
                     PickKind.SWIPE_EDIT -> {
                         val old = steps.getOrNull(pickEditIndex)
                         if (old != null) {
-                            replaceStep(pickEditIndex, old.copy(start = start, end = end))
+                            // Re-picked endpoints invalidate any
+                            // recorded finger path: the old path no
+                            // longer runs between the new endpoints.
+                            replaceStep(
+                                pickEditIndex,
+                                old.copy(
+                                    start = start, end = end,
+                                    pathPoints = emptyList()
+                                )
+                            )
                         }
                         replacePendingOld = null
                         replacePendingIndex = -1

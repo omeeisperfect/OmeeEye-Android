@@ -238,6 +238,16 @@ class StepAdapter(
                         step.start.x, step.start.y, step.end.x, step.end.y
                     )
                 )
+                // A recorded finger path is not a straight segment:
+                // say so, with its point count, instead of implying
+                // a single straight line.
+                if (step.pathPoints.size >= 3) {
+                    lines.add(
+                        context.getString(
+                            R.string.step_preview_path, step.pathPoints.size
+                        )
+                    )
+                }
             }
             StepType.TYPE_TEXT -> if (step.text.isNotBlank()) {
                 lines.add(

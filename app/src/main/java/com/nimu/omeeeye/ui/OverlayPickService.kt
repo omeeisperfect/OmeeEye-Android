@@ -116,6 +116,15 @@ class OverlayPickService : Service() {
         // throughout the service).
         const val TAP_MAX_DISTANCE_PX = 24f
         const val TAP_MAX_DURATION_MS = 600L
+        // Recorded-path downsampling: a MOVE point is kept only when
+        // the finger moved at least this far (px) from the last kept
+        // point, so a long swipe stays a short, faithful point list
+        // instead of one point per touch event. 10px at any density
+        // keeps curves visibly true (a curve needs several kept
+        // points, and 10px steps give it plenty) without ballooning
+        // the stored step. No time gate: a slow, long wiggle is still
+        // bounded by path length / 10px.
+        const val PATH_MIN_DISTANCE_PX = 10f
         const val MIN_SWIPE_DURATION_MS = 100L
         const val MAX_SWIPE_DURATION_MS = 5000L
         const val DEFAULT_WAIT_AFTER_MS = 2000L
@@ -216,6 +225,16 @@ class OverlayPickService : Service() {
     private var lastY: Float = 0f
     private var tracking: Boolean = false
 
+    // Record-mode finger path, in order, downsampled by
+    // PATH_MIN_DISTANCE_PX. Starts with the DOWN point; the UP point
+    // is appended on release. Only a swipe with 3+ points stores it
+    // (see ACTION_UP); taps and near-straight flicks store nothing.
+    private val currentPath = mutableListOf<Point>()
+
+    // Record-bar drag: whether the wrapper width has been frozen to
+    // its measured width yet (see the drag wrapper below).
+    private var recordBarDragFrozen: Boolean = false
+
     private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onCreate() {
@@ -262,6 +281,8 @@ class OverlayPickService : Service() {
         dragging = false
         recorded.clear()
         tracking = false
+        currentPath.clear()
+        recordBarDragFrozen = false
     }
 
     private fun showOverlay(hint: String) {
@@ -380,7 +401,50 @@ class OverlayPickService : Service() {
             // app underneath as real key presses.
             buildRecordBar(bar)
         }
-        root.addView(bar)
+        if (mode == MODE_RECORD) {
+            // Draggable record bar: the bar sits inside a
+            // PanelDragLayout wrapper (same 10dp drag threshold, same
+            // tap-still-clicks rule as the floating panels), and the
+            // wrapper — not the bar — carries the screen position as
+            // its FrameLayout margins. The wrapper starts MATCH_PARENT
+            // wide (the old full-width bar look); on the first drag
+            // move its width freezes to the measured width so the
+            // panel can then slide sideways without shrinking, and
+            // the margins become its x/y. Session-only: a new
+            // recording starts at the default top position again.
+            val wrap = PanelDragLayout(this)
+            bar.layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            )
+            wrap.addView(bar)
+            val wrapParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = Gravity.TOP
+                val m = (16 * density).toInt()
+                setMargins(m, m, m, 0)
+            }
+            wrap.dragOrigin = { wrapParams.leftMargin to wrapParams.topMargin }
+            wrap.onDragPosition = { newX, newY ->
+                if (!recordBarDragFrozen) {
+                    wrapParams.width = wrap.measuredWidth
+                    wrapParams.rightMargin = 0
+                    recordBarDragFrozen = true
+                }
+                val maxX = (resources.displayMetrics.widthPixels -
+                    wrap.measuredWidth).coerceAtLeast(0)
+                val maxY = (resources.displayMetrics.heightPixels -
+                    wrap.measuredHeight).coerceAtLeast(0)
+                wrapParams.leftMargin = newX.coerceIn(0, maxX)
+                wrapParams.topMargin = newY.coerceIn(0, maxY)
+                wrap.layoutParams = wrapParams
+            }
+            root.addView(wrap, wrapParams)
+        } else {
+            root.addView(bar)
+        }
 
         drawView?.setOnTouchListener { _, event ->
             val x = event.rawX.toInt()
@@ -449,6 +513,9 @@ class OverlayPickService : Service() {
                             downTimeMs = event.eventTime
                             maxDistancePx = 0f
                             tracking = true
+                            // The path starts at the DOWN point.
+                            currentPath.clear()
+                            currentPath.add(Point(downX.toInt(), downY.toInt()))
                             true
                         }
                         MotionEvent.ACTION_MOVE -> {
@@ -457,16 +524,22 @@ class OverlayPickService : Service() {
                                 lastY = event.rawY
                                 val d = hypot(lastX - downX, lastY - downY)
                                 if (d > maxDistancePx) maxDistancePx = d
-                                // Live swipe path: a line from the touch
-                                // down point to the current finger point,
-                                // so a swipe is visible WHILE it happens
-                                // (before, only its two end dots showed).
-                                drawView?.setPath(
-                                    listOf(
-                                        Point(downX.toInt(), downY.toInt()),
+                                // True finger path: keep the point only
+                                // past the downsampling distance, and
+                                // draw the ACTUAL polyline through the
+                                // kept points — never a straight
+                                // down-to-current line.
+                                val lastKept = currentPath.last()
+                                if (hypot(
+                                        lastX - lastKept.x,
+                                        lastY - lastKept.y
+                                    ) >= PATH_MIN_DISTANCE_PX
+                                ) {
+                                    currentPath.add(
                                         Point(lastX.toInt(), lastY.toInt())
                                     )
-                                )
+                                }
+                                drawView?.setPath(currentPath.toList())
                             }
                             true
                         }
@@ -490,12 +563,29 @@ class OverlayPickService : Service() {
                                     )
                                     drawView?.addDot(upX, upY)
                                 } else {
+                                    // Close the path at the UP point
+                                    // (unless it duplicates the last
+                                    // kept point), and store it only
+                                    // when it is a real path: 3+
+                                    // points. A 2-point "path" is
+                                    // just the straight swipe, and
+                                    // storing it would be redundant.
+                                    val upPoint = Point(upX, upY)
+                                    if (currentPath.lastOrNull() != upPoint) {
+                                        currentPath.add(upPoint)
+                                    }
+                                    val path = if (currentPath.size >= 3) {
+                                        currentPath.toList()
+                                    } else {
+                                        emptyList()
+                                    }
                                     recorded.add(
                                         Step(
                                             id = WorkflowStore.newId(),
                                             type = StepType.SWIPE,
                                             start = Point(downX.toInt(), downY.toInt()),
                                             end = Point(upX, upY),
+                                            pathPoints = path,
                                             durationMs = durationMs.coerceIn(
                                                 MIN_SWIPE_DURATION_MS,
                                                 MAX_SWIPE_DURATION_MS
@@ -506,6 +596,7 @@ class OverlayPickService : Service() {
                                     drawView?.addDot(downX.toInt(), downY.toInt())
                                     drawView?.addDot(upX, upY)
                                 }
+                                currentPath.clear()
                                 countView?.text = getString(
                                     R.string.float_record_steps, recorded.size
                                 )
@@ -514,6 +605,7 @@ class OverlayPickService : Service() {
                         }
                         MotionEvent.ACTION_CANCEL -> {
                             tracking = false
+                            currentPath.clear()
                             drawView?.clearPath()
                             true
                         }

@@ -493,6 +493,9 @@ class RecognitionEditActivity : AppCompatActivity() {
                 )).copy(
                     type = StepType.SWIPE,
                     start = start, end = end,
+                    // Re-picked endpoints invalidate a recorded
+                    // finger path (same rule as the main editor).
+                    pathPoints = emptyList(),
                     durationMs = pendingSubSwipeDurationMs
                 )
                 putSubAction(listKey, step, editIndex)

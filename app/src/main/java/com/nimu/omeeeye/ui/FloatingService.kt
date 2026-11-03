@@ -17,6 +17,7 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
+import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
@@ -304,8 +305,10 @@ class FloatingService : Service() {
             fnVisibility(FloatingPanelPrefs.FN_PLAY)
         view.findViewById<View>(R.id.btn_target).visibility =
             fnVisibility(FloatingPanelPrefs.FN_TARGET)
+        val params = overlayParams()
+        val dragView = makeDraggable(view, params)
         try {
-            windowManager.addView(view, overlayParams())
+            windowManager.addView(dragView, params)
         } catch (e: Exception) {
             // addView used to throw out of onStartCommand uncaught
             // (permission revoked between check and add, or a bad
@@ -314,7 +317,7 @@ class FloatingService : Service() {
             Toast.makeText(this, R.string.floating_mode_bar_failed, Toast.LENGTH_LONG).show()
             return
         }
-        idleView = view
+        idleView = dragView
     }
 
     private fun showRunning() {
@@ -395,8 +398,50 @@ class FloatingService : Service() {
             fnVisibility(FloatingPanelPrefs.FN_HOME)
         view.findViewById<View>(R.id.run_btn_recents).visibility =
             fnVisibility(FloatingPanelPrefs.FN_RECENTS)
-        windowManager.addView(view, overlayParams())
-        runningView = view
+        val params = overlayParams()
+        val dragView = makeDraggable(view, params)
+        windowManager.addView(dragView, params)
+        runningView = dragView
+    }
+
+    /**
+     * Draggable floating panels: the inflated panel is wrapped in a
+     * PanelDragLayout whose drag moves this panel's window params.
+     * Button taps still click (the wrapper only intercepts past the
+     * 10dp drag threshold), and the position is clamped to the screen
+     * and persisted on drag end, so the next panel appears where the
+     * user left the last one. Wrapping changes no ids, no click
+     * listeners, and no show/hide order.
+     */
+    private fun makeDraggable(
+        panel: View,
+        params: WindowManager.LayoutParams
+    ): View {
+        val drag = PanelDragLayout(this)
+        drag.addView(
+            panel,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+        drag.dragOrigin = { params.x to params.y }
+        drag.onDragPosition = { newX, newY ->
+            val metrics = resources.displayMetrics
+            val maxX = (metrics.widthPixels - drag.measuredWidth).coerceAtLeast(0)
+            val maxY = (metrics.heightPixels - drag.measuredHeight).coerceAtLeast(0)
+            params.x = newX.coerceIn(0, maxX)
+            params.y = newY.coerceIn(0, maxY)
+            try {
+                windowManager.updateViewLayout(drag, params)
+            } catch (e: Exception) {
+                // Panel already removed (e.g. run ended mid-drag).
+            }
+        }
+        drag.onDragEnd = {
+            FloatingPanelPrefs.savePosition(this, params.x, params.y)
+        }
+        return drag
     }
 
     /** Expand chevron: collapses rows 2-3 to a one-row bar, or brings
@@ -471,6 +516,15 @@ class FloatingService : Service() {
             val margin = (16 * resources.displayMetrics.density).toInt()
             x = margin
             this.y = margin
+            // Last dragged position wins over the default inset, so a
+            // panel re-shown after a run (or after Home CLOSE) returns
+            // where the user left it. Clamped loosely here (the panel
+            // is not measured yet); drag moves clamp tightly.
+            FloatingPanelPrefs.getPosition(this@FloatingService)?.let { (savedX, savedY) ->
+                val metrics = resources.displayMetrics
+                x = savedX.coerceIn(0, metrics.widthPixels)
+                this.y = savedY.coerceIn(0, metrics.heightPixels)
+            }
         }
     }
 

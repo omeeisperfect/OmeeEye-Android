@@ -636,7 +636,15 @@ object WorkflowRunner {
                 if (start == null || end == null) {
                     return StepResult.Failed(failMessage(index, "Missing swipe points"))
                 }
-                if (service.swipe(start, end, step.durationMs)) StepResult.Success
+                // Recorded finger path (3+ points) replays along the
+                // path itself; anything else is the old straight swipe,
+                // so pre-path steps play exactly as before.
+                val played = if (step.pathPoints.size >= 3) {
+                    service.swipePath(step.pathPoints, step.durationMs)
+                } else {
+                    service.swipe(start, end, step.durationMs)
+                }
+                if (played) StepResult.Success
                 else StepResult.Failed(failMessage(index, "Swipe failed"))
             }
             StepType.TYPE_TEXT -> {

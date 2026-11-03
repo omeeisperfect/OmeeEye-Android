@@ -36,6 +36,7 @@
     <string name="step_preview_cycles">Cycles: %1$d</string>
     <string name="step_preview_point">Point: (%1$d, %2$d)</string>
     <string name="step_preview_swipe">Swipe: (%1$d, %2$d) to (%3$d, %4$d)</string>
+    <string name="step_preview_path">Path: %1$d points</string>
     <string name="step_preview_text">Text: %1$s</string>
     <string name="step_preview_key">Key: %1$s</string>
     <string name="step_preview_package">App: %1$s</string>

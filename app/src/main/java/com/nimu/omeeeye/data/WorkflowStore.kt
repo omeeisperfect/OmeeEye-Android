@@ -144,6 +144,15 @@ object WorkflowStore {
         s.point?.let { put("x", it.x); put("y", it.y) }
         s.start?.let { put("startX", it.x); put("startY", it.y) }
         s.end?.let { put("endX", it.x); put("endY", it.y) }
+        // Additive: old files simply have no "pathPoints" key, and
+        // steps without a recorded path store none (empty = straight).
+        if (s.pathPoints.isNotEmpty()) {
+            val pts = JSONArray()
+            s.pathPoints.forEach {
+                pts.put(JSONObject().put("x", it.x).put("y", it.y))
+            }
+            put("pathPoints", pts)
+        }
         put("durationMs", s.durationMs)
         put("text", s.text)
         s.navKey?.let { put("navKey", it.name) }
@@ -231,6 +240,19 @@ object WorkflowStore {
             point = if (obj.has("x")) Point(obj.getInt("x"), obj.getInt("y")) else null,
             start = if (obj.has("startX")) Point(obj.getInt("startX"), obj.getInt("startY")) else null,
             end = if (obj.has("endX")) Point(obj.getInt("endX"), obj.getInt("endY")) else null,
+            pathPoints = run {
+                val arr = obj.optJSONArray("pathPoints") ?: return@run emptyList()
+                val out = mutableListOf<Point>()
+                for (i in 0 until arr.length()) {
+                    try {
+                        val o = arr.getJSONObject(i)
+                        out.add(Point(o.getInt("x"), o.getInt("y")))
+                    } catch (e: Exception) {
+                        // Skip one corrupt point, keep the rest.
+                    }
+                }
+                out
+            },
             durationMs = obj.optLong("durationMs", 0),
             text = obj.optString("text", ""),
             navKey = navKey,

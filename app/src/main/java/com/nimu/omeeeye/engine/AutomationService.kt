@@ -149,6 +149,28 @@ class AutomationService : AccessibilityService() {
     }
 
     /**
+     * Swipe along a recorded finger path, in order — the exact shape
+     * the finger took, never a straight line. One stroke, so the
+     * finger never lifts mid-path; its total duration is the recorded
+     * duration (clamped like swipe()), which Android distributes along
+     * the polyline. Per-point timestamps are deliberately not stored:
+     * a single accessibility stroke takes one total duration, so
+     * finer timestamps could not be replayed anyway. Callers pass
+     * 3+ points; anything shorter is a straight swipe via swipe().
+     */
+    fun swipePath(points: List<Point>, durationMs: Long): Boolean {
+        if (points.size < 2) return false
+        val clamped = durationMs.coerceIn(MIN_STROKE_MS, MAX_STROKE_MS)
+        val path = Path().apply {
+            moveTo(points[0].x.toFloat(), points[0].y.toFloat())
+            for (i in 1 until points.size) {
+                lineTo(points[i].x.toFloat(), points[i].y.toFloat())
+            }
+        }
+        return dispatchAndWait(path, clamped)
+    }
+
+    /**
      * Types [text] into whichever input field is currently focused, via the
      * clipboard + paste. Returns false when there is no focused input node
      * (nothing to type into) or the paste itself fails.

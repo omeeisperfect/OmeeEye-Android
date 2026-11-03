@@ -124,6 +124,14 @@ data class Step(
     // SWIPE
     val start: Point? = null,
     val end: Point? = null,
+    // SWIPE only, ADDITIVE: the full finger path in order, recorded
+    // while the user dragged during recording (OverlayPickService).
+    // Empty = the old behaviour: a straight start -> end swipe, and
+    // old 2-point steps keep playing exactly as before. The runner
+    // follows this list only when it holds 3+ points; shorter lists
+    // are never stored, so "has a path" always means "not a straight
+    // line". First/last points equal start/end when present.
+    val pathPoints: List<Point> = emptyList(),
     // SWIPE duration / WAIT duration (ms)
     val durationMs: Long = 0,
     // TYPE_TEXT content (text content is not a location, so typing it is fine)

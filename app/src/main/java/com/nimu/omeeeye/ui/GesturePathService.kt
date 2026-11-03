@@ -28,6 +28,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import com.nimu.omeeeye.R
 import com.nimu.omeeeye.data.WorkflowStore
+import com.nimu.omeeeye.model.Point
 import com.nimu.omeeeye.model.StepType
 import kotlin.math.PI
 import kotlin.math.atan2
@@ -101,6 +102,10 @@ class GesturePathService : Service() {
         class Arrow(number: Int, val sx: Int, val sy: Int, val ex: Int, val ey: Int) :
             DrawItem(number)
 
+        // A recorded finger path: drawn as its own polyline, never
+        // collapsed to a straight start -> end arrow.
+        class Path(number: Int, val points: List<Point>) : DrawItem(number)
+
         class Area(number: Int, val rect: Rect) : DrawItem(number)
     }
 
@@ -136,9 +141,13 @@ class GesturePathService : Service() {
                     val end = step.end
                     if (start != null && end != null) {
                         number++
-                        items.add(
-                            DrawItem.Arrow(number, start.x, start.y, end.x, end.y)
-                        )
+                        if (step.pathPoints.size >= 3) {
+                            items.add(DrawItem.Path(number, step.pathPoints))
+                        } else {
+                            items.add(
+                                DrawItem.Arrow(number, start.x, start.y, end.x, end.y)
+                            )
+                        }
                     }
                 }
                 StepType.AREA_CLICK -> {
@@ -403,6 +412,45 @@ class GesturePathService : Service() {
                             item.number.toString(),
                             item.sx.toFloat(),
                             item.sy.toFloat() - radius - 4 * resources.displayMetrics.density,
+                            numberPaint
+                        )
+                    }
+                    is DrawItem.Path -> {
+                        val pts = item.points
+                        for (i in 0 until pts.size - 1) {
+                            canvas.drawLine(
+                                pts[i].x.toFloat(), pts[i].y.toFloat(),
+                                pts[i + 1].x.toFloat(), pts[i + 1].y.toFloat(),
+                                linePaint
+                            )
+                        }
+                        // Arrowhead on the last segment, like Arrow.
+                        val last = pts.last()
+                        val prev = pts[pts.size - 2]
+                        val angle = atan2(
+                            (last.y - prev.y).toDouble(),
+                            (last.x - prev.x).toDouble()
+                        )
+                        for (sign in listOf(PI / 6, -PI / 6)) {
+                            val a = angle + PI + sign
+                            canvas.drawLine(
+                                last.x.toFloat(), last.y.toFloat(),
+                                (last.x + arrowLen * cos(a)).toFloat(),
+                                (last.y + arrowLen * sin(a)).toFloat(),
+                                linePaint
+                            )
+                        }
+                        val first = pts.first()
+                        canvas.drawCircle(
+                            first.x.toFloat(), first.y.toFloat(), radius, dotPaint
+                        )
+                        canvas.drawCircle(
+                            first.x.toFloat(), first.y.toFloat(), radius, ringPaint
+                        )
+                        canvas.drawText(
+                            item.number.toString(),
+                            first.x.toFloat(),
+                            first.y.toFloat() - radius - 4 * resources.displayMetrics.density,
                             numberPaint
                         )
                     }
