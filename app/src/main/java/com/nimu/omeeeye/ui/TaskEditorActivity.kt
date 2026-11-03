@@ -1,5 +1,6 @@
 package com.nimu.omeeeye.ui
 
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -7,6 +8,7 @@ import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
 import android.view.View
+import android.view.inputmethod.InputMethodManager
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
@@ -93,6 +95,7 @@ class TaskEditorActivity : AppCompatActivity() {
     // overflow menu — the Data button no longer sits in the bottom row).
     private var dataType: String = ""
     private var dataFileName: String = ""
+    private var dataLibraryId: String = ""
     private var startRow: Int = 1
     private var dataRepeat: Int = 0
 
@@ -317,6 +320,9 @@ class TaskEditorActivity : AppCompatActivity() {
                 }
                 dataType = if (ext == "xlsx") "EXCEL" else ext.uppercase()
                 dataFileName = fileName
+                // Attach replaces any Library source, so the source stays
+                // unambiguous (Library choice clears these, vice versa).
+                dataLibraryId = ""
                 Toast.makeText(this, R.string.data_attached, Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Toast.makeText(this, R.string.data_read_failed, Toast.LENGTH_SHORT).show()
@@ -342,6 +348,15 @@ class TaskEditorActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_task_editor)
 
+        // The floating bar must never overlap the editor, from ANY
+        // entry path (Home card, floating-bar wrench/target, CREATE
+        // TASK, shortcut). Drop only the idle bar view; the service
+        // stays alive and the running panel (if any) is untouched, so
+        // a run always stays stoppable. The bar returns only via the
+        // existing paths (run end, Home CLOSE, card Floating bar
+        // action) — nothing auto-restores it over the editor.
+        FloatingService.hideIdle()
+
         val workflowIdExtra = intent.getStringExtra("workflow_id")
         existingWorkflow = workflowIdExtra?.let { WorkflowStore.get(this, it) }
         workflowId = existingWorkflow?.id ?: WorkflowStore.newId()
@@ -349,6 +364,7 @@ class TaskEditorActivity : AppCompatActivity() {
             steps.addAll(it.steps)
             dataType = it.dataType
             dataFileName = it.dataFileName
+            dataLibraryId = it.dataLibraryId
             startRow = it.startRow
             dataRepeat = it.dataRepeat
         }
@@ -360,6 +376,16 @@ class TaskEditorActivity : AppCompatActivity() {
 
         nameEditText = findViewById(R.id.workflow_name)
         nameEditText.setText(existingWorkflow?.name ?: "")
+        // Header name mirrors the name field while typing, so the
+        // header always shows the workflow's current name.
+        nameEditText.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                titleView.text = s?.toString()?.ifBlank { null }
+                    ?: getString(R.string.editor_new_title)
+            }
+        })
         stepListView = findViewById(R.id.step_list)
 
         adapter = StepAdapter(steps, object : StepAdapter.Listener {
@@ -408,6 +434,19 @@ class TaskEditorActivity : AppCompatActivity() {
         findViewById<ImageButton>(R.id.btn_editor_menu).setOnClickListener {
             showEditorMenu(it)
         }
+        // Header pencil: renames via the existing name field — focus it,
+        // show the keyboard and select the current name for retyping.
+        findViewById<ImageButton>(R.id.btn_name_edit).setOnClickListener {
+            nameEditText.requestFocus()
+            nameEditText.selectAll()
+            val imm = getSystemService(Context.INPUT_METHOD_SERVICE)
+                as? InputMethodManager
+            imm?.showSoftInput(nameEditText, InputMethodManager.SHOW_IMPLICIT)
+        }
+        // Header "?": short help dialog describing the editor.
+        findViewById<TextView>(R.id.btn_editor_help).setOnClickListener {
+            showEditorHelpDialog()
+        }
 
         // Back press = cancel: finish without saving. Uses the base
         // OnBackPressedCallback API (no activity-ktx dependency).
@@ -436,6 +475,15 @@ class TaskEditorActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
+    /** Header "?" help: a short read-only description of the editor. */
+    private fun showEditorHelpDialog() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.editor_help_title)
+            .setMessage(R.string.editor_help_text)
+            .setPositiveButton(R.string.ok, null)
+            .show()
+    }
+
     // ---------- Workflow assembly / persistence ----------
 
     private fun currentWorkflow(): Workflow {
@@ -450,6 +498,7 @@ class TaskEditorActivity : AppCompatActivity() {
             updatedAt = existing?.updatedAt ?: System.currentTimeMillis(),
             dataType = dataType,
             dataFileName = dataFileName,
+            dataLibraryId = dataLibraryId,
             startRow = startRow,
             dataRepeat = dataRepeat
         )
@@ -1264,18 +1313,37 @@ class TaskEditorActivity : AppCompatActivity() {
         return DataPickerState(fileSpinner, columnSpinner, files)
     }
 
-    /** Workflow-level data source: attach file, start row, repeat, remove. */
+    /** Workflow-level data source: attach file, Library file, start row, repeat, remove. */
     private fun showDataDialog() {
-        val message = if (dataFileName.isBlank()) {
-            getString(R.string.data_current_none)
-        } else {
-            getString(
-                R.string.data_current_format,
-                dataFileName, dataType.ifBlank { "-" }, startRow, dataRepeat
-            )
+        val message = when {
+            dataLibraryId.isNotBlank() -> {
+                val libraryFile = DataFileStore.get(this, dataLibraryId)
+                if (libraryFile != null) {
+                    getString(
+                        R.string.data_library_current_format,
+                        libraryFile.name, libraryFile.type.ifBlank { "-" },
+                        startRow, dataRepeat
+                    )
+                } else {
+                    // Referenced Library file was deleted: say so plainly
+                    // instead of showing a stale name.
+                    getString(
+                        R.string.data_library_missing,
+                        startRow, dataRepeat
+                    )
+                }
+            }
+            dataFileName.isNotBlank() -> {
+                getString(
+                    R.string.data_current_format,
+                    dataFileName, dataType.ifBlank { "-" }, startRow, dataRepeat
+                )
+            }
+            else -> getString(R.string.data_current_none)
         }
         val items = arrayOf(
             getString(R.string.data_attach),
+            getString(R.string.data_library_use),
             getString(R.string.data_start_row),
             getString(R.string.data_repeat),
             getString(R.string.data_remove)
@@ -1286,7 +1354,8 @@ class TaskEditorActivity : AppCompatActivity() {
             .setItems(items) { _, which ->
                 when (which) {
                     0 -> dataLauncher.launch("*/*")
-                    1 -> {
+                    1 -> showLibraryDataPicker()
+                    2 -> {
                         val picker = NumberPicker(this).apply {
                             minValue = 1
                             maxValue = 10000
@@ -1301,7 +1370,7 @@ class TaskEditorActivity : AppCompatActivity() {
                             .setNegativeButton(R.string.cancel, null)
                             .show()
                     }
-                    2 -> {
+                    3 -> {
                         val picker = NumberPicker(this).apply {
                             minValue = 0
                             maxValue = 10000
@@ -1316,12 +1385,39 @@ class TaskEditorActivity : AppCompatActivity() {
                             .setNegativeButton(R.string.cancel, null)
                             .show()
                     }
-                    3 -> {
+                    4 -> {
                         dataType = ""
                         dataFileName = ""
+                        dataLibraryId = ""
                         Toast.makeText(this, R.string.data_removed, Toast.LENGTH_SHORT).show()
                     }
                 }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /**
+     * Library-file picker for the workflow data source: names only,
+     * never a typed path. Choosing one makes it the sole workflow
+     * source (an attached file's dataType/dataFileName are cleared).
+     * Start row / Repeat keep applying to the chosen file's rows.
+     */
+    private fun showLibraryDataPicker() {
+        val files = DataFileStore.loadAll(this)
+        if (files.isEmpty()) {
+            Toast.makeText(this, R.string.data_library_empty, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val names = files.map { it.name }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle(R.string.data_library_use)
+            .setItems(names) { _, which ->
+                val chosen = files.getOrNull(which) ?: return@setItems
+                dataLibraryId = chosen.id
+                dataType = ""
+                dataFileName = ""
+                Toast.makeText(this, R.string.data_library_attached, Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton(R.string.cancel, null)
             .show()

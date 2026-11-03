@@ -1,11 +1,14 @@
 package com.nimu.omeeeye.ui
 
+import android.text.SpannableString
+import android.text.style.ForegroundColorSpan
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageButton
 import android.widget.PopupMenu
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.nimu.omeeeye.R
 import com.nimu.omeeeye.model.Workflow
@@ -23,9 +26,10 @@ class WorkflowAdapter(private val listener: Listener) :
         fun onDelete(workflow: Workflow)
         fun onFloatingBar(workflow: Workflow)
         fun onPlay(workflow: Workflow)
-        // Home card menu additions (items 1, 2, 4, 5, 6). Edit details
-        // reuses the existing Edit path (onEdit opens the editor, where
-        // the name is edited); the rest are new MainActivity handlers.
+        // Home card menu (reference order + Floating bar): gesture
+        // path, Edit details, Timed, copy, Share, shortcut, Floating
+        // bar, delete. Edit details reuses the existing Edit path
+        // (onEdit opens the editor, where the name is edited).
         fun onEditDetails(workflow: Workflow)
         fun onShare(workflow: Workflow)
         fun onShortcut(workflow: Workflow)
@@ -80,25 +84,42 @@ class WorkflowAdapter(private val listener: Listener) :
 
         holder.btnCardMenu.setOnClickListener { view ->
             val popup = PopupMenu(view.context, view)
-            popup.menu.add(0, MENU_EDIT_DETAILS, 0, R.string.card_menu_edit_details)
-            popup.menu.add(0, MENU_DUPLICATE, 1, R.string.card_menu_duplicate)
-            popup.menu.add(0, MENU_SHARE, 2, R.string.card_menu_share)
-            popup.menu.add(0, MENU_SHORTCUT, 3, R.string.card_menu_shortcut)
-            popup.menu.add(0, MENU_TIMED, 4, R.string.card_menu_timed)
-            popup.menu.add(0, MENU_GESTURE_PATH, 5, R.string.card_menu_gesture_path)
-            // Existing items, kept in place: Edit and Floating bar
-            // still work exactly as before.
-            popup.menu.add(0, MENU_EDIT, 6, R.string.card_menu_edit)
-            popup.menu.add(0, MENU_FLOATING_BAR, 7, R.string.card_menu_floating_bar)
-            popup.menu.add(0, MENU_DELETE, 8, R.string.card_menu_delete)
+            // Card menu, reference order and labels, plus Floating bar
+            // as the 8th item (the user asked for floating mode to be
+            // reachable; CLOSE alone is not enough). Every item wires
+            // to an existing MainActivity handler; no handler was
+            // invented. "Edit" is not listed (it duplicates Edit
+            // details, which opens the same editor).
+            popup.menu.add(0, MENU_GESTURE_PATH, 0, R.string.card_menu_gesture_path)
+            popup.menu.add(0, MENU_EDIT_DETAILS, 1, R.string.card_menu_edit_details)
+            popup.menu.add(0, MENU_TIMED, 2, R.string.card_menu_timed)
+            popup.menu.add(0, MENU_DUPLICATE, 3, R.string.card_menu_copy_task)
+            popup.menu.add(0, MENU_SHARE, 4, R.string.card_menu_share_task)
+            popup.menu.add(0, MENU_SHORTCUT, 5, R.string.card_menu_shortcut_item)
+            popup.menu.add(0, MENU_FLOATING_BAR, 6, R.string.card_menu_floating_bar)
+            val deleteTitle = SpannableString(
+                view.context.getString(R.string.card_menu_delete_item)
+            ).apply {
+                setSpan(
+                    ForegroundColorSpan(
+                        ContextCompat.getColor(view.context, R.color.danger)
+                    ),
+                    0, length, SpannableString.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+            popup.menu.add(0, MENU_DELETE, 7, deleteTitle)
             popup.setOnMenuItemClickListener { item ->
                 when (item.itemId) {
+                    MENU_GESTURE_PATH -> {
+                        listener.onGesturePath(workflow)
+                        true
+                    }
                     MENU_EDIT_DETAILS -> {
                         listener.onEditDetails(workflow)
                         true
                     }
-                    MENU_EDIT -> {
-                        listener.onEdit(workflow)
+                    MENU_TIMED -> {
+                        listener.onTimed(workflow)
                         true
                     }
                     MENU_DUPLICATE -> {
@@ -113,20 +134,12 @@ class WorkflowAdapter(private val listener: Listener) :
                         listener.onShortcut(workflow)
                         true
                     }
-                    MENU_TIMED -> {
-                        listener.onTimed(workflow)
-                        true
-                    }
-                    MENU_GESTURE_PATH -> {
-                        listener.onGesturePath(workflow)
+                    MENU_FLOATING_BAR -> {
+                        listener.onFloatingBar(workflow)
                         true
                     }
                     MENU_DELETE -> {
                         listener.onDelete(workflow)
-                        true
-                    }
-                    MENU_FLOATING_BAR -> {
-                        listener.onFloatingBar(workflow)
                         true
                     }
                     else -> false

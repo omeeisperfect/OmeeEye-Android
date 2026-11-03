@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Library dataset view: preview of an uploaded data file (TXT / CSV /
+     Excel). All strings English, per the app-wide language rule. -->
+<resources>
+    <string name="library_dataset_title">Dataset preview</string>
+    <string name="library_dataset_close">Close</string>
+    <!-- %1$s = file type (TXT, CSV or Excel), %2$d = data row count. -->
+    <string name="library_dataset_meta">%1$s · %2$d rows</string>
+    <string name="library_dataset_truncated">Showing the first 10 rows.</string>
+    <string name="library_dataset_empty">This file has no data rows to preview.</string>
+    <!-- %1$s = the loader error, e.g. "Data file not found". -->
+    <string name="library_dataset_error">Could not read this data file: %1$s</string>
+    <!-- List-row hint: %1$s = file type (TXT, CSV or Excel). -->
+    <string name="library_dataset_row_preview">%1$s data file · Tap to view</string>
+    <!-- Display form of the stored "EXCEL" type. -->
+    <string name="library_dataset_type_excel">Excel</string>
+</resources>

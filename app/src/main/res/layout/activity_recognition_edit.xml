@@ -58,7 +58,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
-                android:text="@string/rec_judgment_exact" />
+                android:text="@string/add_judgment_same" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -398,8 +398,9 @@
             </LinearLayout>
 
             <!-- Custom actions, and the same list as "actions before
-                 jumping" in Jump mode. The click-first switch only
-                 applies to Custom mode. -->
+                 jumping" in Jump mode. The click-first switch shows
+                 in Custom and Jump modes (the runner taps first only
+                 for Custom mode; see RecognitionEditActivity). -->
             <LinearLayout
                 android:id="@+id/success_actions_group"
                 android:layout_width="match_parent"
@@ -667,6 +668,30 @@
                     android:textColor="@color/text_secondary"
                     android:textSize="14sp" />
             </LinearLayout>
+        </LinearLayout>
+
+        <!-- ================= Cycles ================= -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="@string/rec_cycles_title"
+            android:textColor="@color/text_primary"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/row_card"
+            android:orientation="vertical"
+            android:padding="12dp">
+
+            <NumberPicker
+                android:id="@+id/picker_cycles"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
         </LinearLayout>
 
         <!-- ================= Bottom: Save / Close ================= -->

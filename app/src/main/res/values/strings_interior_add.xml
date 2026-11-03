@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the reference-order ADD menu and the Button recognition
+     detail dialog (interior rebuild). ALL ENGLISH. The "add_" prefix
+     keeps these names clear of every other strings file. -->
+<resources>
+    <!-- ADD menu groups, in reference order. The reference groups come
+         first; "More actions" and "Advanced actions" hold our extra
+         actions, appended after the reference groups. -->
+    <string name="add_group_add">add</string>
+    <string name="add_group_sub_task">sub-task</string>
+    <string name="add_group_logic">Logic judgment function</string>
+    <string name="add_group_more">More actions</string>
+    <string name="add_group_advanced">Advanced actions</string>
+
+    <!-- Badge on the Recording gesture row. -->
+    <string name="add_badge_new">NEW</string>
+
+    <!-- Judgment method, reference labels. Mapping (semantics
+         unchanged, MatchMode stored as before):
+         MatchMode.EXACT -> "Same" (text must be exactly the same);
+         MatchMode.PARTIAL -> "Contains" (text must contain the value).
+         Step default is EXACT, so the default shown is "Same". -->
+    <string name="add_judgment_same">Same</string>
+    <string name="add_judgment_contains">Contains</string>
+
+    <!-- Button detail dialog, shown after a screen capture returns. -->
+    <string name="add_detail_title">Button details</string>
+    <string name="add_detail_judgment">Judgment method</string>
+    <string name="add_detail_area">Recognition area</string>
+    <string name="add_detail_button_text">Button text</string>
+    <string name="add_detail_button_id">Button ID</string>
+    <string name="add_detail_button_desc">Button description</string>
+</resources>

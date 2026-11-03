@@ -46,14 +46,76 @@ class AddStepBottomSheet : BottomSheetDialogFragment() {
         val descRes: Int,
         /** Null for the Record gesture row, which is not a StepType. */
         val type: StepType?,
-        val isRecord: Boolean
+        val isRecord: Boolean,
+        /** Shows the NEW badge beside the title (Record row only). */
+        val isNew: Boolean = false
     )
 
     private data class Section(val titleRes: Int, val rows: List<Row>)
 
+    // Groups in reference order: "add", "sub-task", "Logic judgment
+    // function". Our extra actions follow AFTER those groups, in the
+    // same row style (distinct icon + bold title + grey description):
+    // "More actions" holds the remaining core steps, OCR and data
+    // steps; "Advanced actions" holds the advanced actions.
     private val sections: List<Section> = listOf(
         Section(
-            R.string.group_basic,
+            R.string.add_group_add,
+            listOf(
+                Row(
+                    R.drawable.ic_step_record,
+                    R.string.step_record, R.string.step_record_desc,
+                    null, true, true
+                ),
+                Row(
+                    R.drawable.ic_step_nav,
+                    R.string.step_navigation, R.string.step_navigation_desc,
+                    StepType.NAVIGATION, false
+                ),
+                Row(
+                    R.drawable.ic_step_waitrandom,
+                    R.string.step_wait_random, R.string.step_wait_random_desc,
+                    StepType.WAIT_RANDOM, false
+                ),
+                Row(
+                    R.drawable.ic_step_launch,
+                    R.string.step_launch_app, R.string.step_launch_app_desc,
+                    StepType.LAUNCH_APP, false
+                )
+            )
+        ),
+        Section(
+            R.string.add_group_sub_task,
+            listOf(
+                Row(
+                    R.drawable.ic_step_subtask,
+                    R.string.step_sub_task, R.string.step_sub_task_desc,
+                    StepType.SUB_TASK, false
+                )
+            )
+        ),
+        Section(
+            R.string.add_group_logic,
+            listOf(
+                Row(
+                    R.drawable.ic_step_button,
+                    R.string.step_button_recognition, R.string.step_button_recognition_desc,
+                    StepType.BUTTON_RECOGNITION, false
+                ),
+                Row(
+                    R.drawable.ic_step_image,
+                    R.string.step_image_recognition, R.string.step_image_recognition_desc,
+                    StepType.IMAGE_RECOGNITION, false
+                ),
+                Row(
+                    R.drawable.ic_step_color,
+                    R.string.step_color_recognition, R.string.step_color_recognition_desc,
+                    StepType.COLOR_RECOGNITION, false
+                )
+            )
+        ),
+        Section(
+            R.string.add_group_more,
             listOf(
                 Row(
                     R.drawable.ic_step_tap,
@@ -76,60 +138,10 @@ class AddStepBottomSheet : BottomSheetDialogFragment() {
                     StepType.WAIT, false
                 ),
                 Row(
-                    R.drawable.ic_step_record,
-                    R.string.step_record, R.string.step_record_desc,
-                    null, true
-                ),
-                Row(
-                    R.drawable.ic_step_nav,
-                    R.string.step_navigation, R.string.step_navigation_desc,
-                    StepType.NAVIGATION, false
-                ),
-                Row(
-                    R.drawable.ic_step_launch,
-                    R.string.step_launch_app, R.string.step_launch_app_desc,
-                    StepType.LAUNCH_APP, false
-                )
-            )
-        ),
-        Section(
-            R.string.group_sub_task,
-            listOf(
-                Row(
-                    R.drawable.ic_step_subtask,
-                    R.string.step_sub_task, R.string.step_sub_task_desc,
-                    StepType.SUB_TASK, false
-                )
-            )
-        ),
-        Section(
-            R.string.group_recognition,
-            listOf(
-                Row(
-                    R.drawable.ic_step_button,
-                    R.string.step_button_recognition, R.string.step_button_recognition_desc,
-                    StepType.BUTTON_RECOGNITION, false
-                ),
-                Row(
-                    R.drawable.ic_step_image,
-                    R.string.step_image_recognition, R.string.step_image_recognition_desc,
-                    StepType.IMAGE_RECOGNITION, false
-                ),
-                Row(
-                    R.drawable.ic_step_color,
-                    R.string.step_color_recognition, R.string.step_color_recognition_desc,
-                    StepType.COLOR_RECOGNITION, false
-                ),
-                Row(
                     R.drawable.ic_step_ocr,
                     R.string.step_ocr_read, R.string.step_ocr_read_desc,
                     StepType.OCR_READ, false
-                )
-            )
-        ),
-        Section(
-            R.string.group_code_data,
-            listOf(
+                ),
                 Row(
                     R.drawable.ic_step_code,
                     R.string.step_type_code, R.string.step_type_code_desc,
@@ -143,7 +155,7 @@ class AddStepBottomSheet : BottomSheetDialogFragment() {
             )
         ),
         Section(
-            R.string.group_advanced,
+            R.string.add_group_advanced,
             listOf(
                 Row(
                     R.drawable.ic_step_screenshot,
@@ -174,11 +186,6 @@ class AddStepBottomSheet : BottomSheetDialogFragment() {
                     R.drawable.ic_step_area,
                     R.string.step_area_click, R.string.step_area_click_desc,
                     StepType.AREA_CLICK, false
-                ),
-                Row(
-                    R.drawable.ic_step_waitrandom,
-                    R.string.step_wait_random, R.string.step_wait_random_desc,
-                    StepType.WAIT_RANDOM, false
                 ),
                 Row(
                     R.drawable.ic_step_stop,
@@ -273,6 +280,7 @@ class AddStepBottomSheet : BottomSheetDialogFragment() {
             val rowIcon: ImageView = view.findViewById(R.id.row_icon)
             val rowTitle: TextView = view.findViewById(R.id.row_title)
             val rowDesc: TextView = view.findViewById(R.id.row_desc)
+            val rowBadge: TextView = view.findViewById(R.id.row_badge)
         }
 
         override fun getItemViewType(position: Int): Int = when (items[position]) {
@@ -303,6 +311,8 @@ class AddStepBottomSheet : BottomSheetDialogFragment() {
                     rowHolder.rowIcon.setImageResource(item.row.iconRes)
                     rowHolder.rowTitle.setText(item.row.titleRes)
                     rowHolder.rowDesc.setText(item.row.descRes)
+                    rowHolder.rowBadge.visibility =
+                        if (item.row.isNew) View.VISIBLE else View.GONE
                     rowHolder.itemView.setOnClickListener { onRowClicked(item.row) }
                 }
             }

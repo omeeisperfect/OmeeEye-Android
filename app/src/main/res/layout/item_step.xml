@@ -1,104 +1,256 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Step row. No coordinate input exists here or anywhere in the editor:
-     points come only from PickPointActivity / RecordActivity results. -->
-<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- Step row, reference structure. No coordinate input exists here or
+     anywhere in the editor: points come only from PickPointActivity /
+     RecordActivity results.
+     First line: number, gesture icon, title, real duration (hidden when
+     the step has none), edit pencil, eye preview, always-shown count
+     badge, drag handle. Second row: copy, swap, delete, play, menu.
+     Recognition rows add green success / red failure pills on the card.
+     The Wait line sits BELOW the card, not inside it. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginBottom="8dp"
-    app:cardBackgroundColor="@color/card_background"
-    app:cardCornerRadius="12dp"
-    app:cardElevation="2dp">
+    android:orientation="vertical">
 
-    <LinearLayout
+    <com.google.android.material.card.MaterialCardView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:padding="12dp">
-
-        <TextView
-            android:id="@+id/step_number"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textColor="@color/text_primary"
-            android:textSize="16sp"
-            android:textStyle="bold" />
-
-        <ImageView
-            android:id="@+id/step_icon"
-        android:tint="?attr/colorControlNormal"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:layout_marginStart="8dp" />
+        app:cardBackgroundColor="@color/card_background"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="2dp">
 
         <LinearLayout
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
-            android:layout_weight="1"
-            android:orientation="vertical">
+            android:orientation="vertical"
+            android:padding="12dp">
 
-            <TextView
-                android:id="@+id/step_title"
-                android:layout_width="wrap_content"
+            <!-- First line -->
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textColor="@color/text_primary"
-                android:textSize="16sp"
-                android:textStyle="bold" />
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-            <!-- Tapping this opens the per-step wait editor. -->
-            <TextView
-                android:id="@+id/step_wait"
-                android:layout_width="wrap_content"
+                <TextView
+                    android:id="@+id/step_number"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/text_primary"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <ImageView
+                    android:id="@+id/step_icon"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_marginStart="8dp"
+                    android:tint="?attr/colorControlNormal" />
+
+                <TextView
+                    android:id="@+id/step_title"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:layout_weight="1"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/text_primary"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <!-- Real duration only; GONE when the step has none. -->
+                <TextView
+                    android:id="@+id/step_duration"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="14sp"
+                    android:visibility="gone" />
+
+                <ImageButton
+                    android:id="@+id/btn_edit"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/row_edit_desc"
+                    android:src="@android:drawable/ic_menu_edit"
+                    android:tint="?attr/colorControlNormal" />
+
+                <ImageButton
+                    android:id="@+id/btn_preview"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/row_preview_desc"
+                    android:src="@android:drawable/ic_menu_view"
+                    android:tint="?attr/colorControlNormal" />
+
+                <!-- Count badge: always shown, default 1. -->
+                <TextView
+                    android:id="@+id/step_cycles"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:background="@drawable/pill_background"
+                    android:paddingHorizontal="8dp"
+                    android:paddingVertical="4dp"
+                    android:textColor="@color/accent"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <ImageButton
+                    android:id="@+id/btn_drag"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Drag to reorder"
+                    android:src="@android:drawable/ic_menu_sort_by_size" />
+            </LinearLayout>
+
+            <!-- Second icon row -->
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:background="?attr/selectableItemBackground"
-                android:clickable="true"
-                android:focusable="true"
-                android:textColor="@color/text_secondary"
-                android:textSize="14sp" />
+                android:layout_marginTop="8dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <ImageButton
+                    android:id="@+id/btn_copy"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Duplicate step"
+                    android:src="@drawable/ic_copy" />
+
+                <ImageButton
+                    android:id="@+id/btn_swap"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/row_swap_desc"
+                    android:src="@android:drawable/ic_menu_rotate"
+                    android:tint="?attr/colorControlNormal" />
+
+                <ImageButton
+                    android:id="@+id/btn_delete"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Delete step"
+                    android:src="@android:drawable/ic_menu_delete"
+                    android:tint="@color/danger" />
+
+                <ImageButton
+                    android:id="@+id/btn_step_play"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Run just this step"
+                    android:src="@android:drawable/ic_media_play"
+                    android:tint="@color/accent" />
+
+                <View
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:layout_weight="1" />
+
+                <!-- Kept: the step action menu is the only place Replace
+                     lives (Copy / Delete / Play / Edit / Replace). -->
+                <ImageButton
+                    android:id="@+id/btn_step_menu"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Step actions"
+                    android:src="@drawable/ic_more"
+                    android:tint="?attr/colorControlNormal" />
+            </LinearLayout>
+
+            <!-- Recognition branch pills, on the row (GONE otherwise).
+                 Tapping a pill opens the step editor, which holds that
+                 section's success / failure picker. -->
+            <LinearLayout
+                android:id="@+id/branch_pills"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/pill_success"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/pill_background"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:paddingHorizontal="10dp"
+                    android:paddingVertical="6dp"
+                    android:textColor="@color/accent"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/pill_failure"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/pill_background"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:paddingHorizontal="10dp"
+                    android:paddingVertical="6dp"
+                    android:textColor="@color/danger"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
         </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- Wait line BELOW the card. Tapping it (or its pencil) edits the
+         step's wait-after value. -->
+    <LinearLayout
+        android:id="@+id/wait_row"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="4dp"
+        android:paddingVertical="6dp">
+
+        <ImageView
+            android:layout_width="18dp"
+            android:layout_height="18dp"
+            android:src="@drawable/ic_step_wait"
+            android:tint="@color/text_secondary" />
+
+        <TextView
+            android:id="@+id/step_wait"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp" />
 
         <ImageButton
-            android:id="@+id/btn_copy"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:id="@+id/btn_wait_edit"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_marginStart="4dp"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Duplicate step"
-            android:src="@drawable/ic_copy" />
-
-        <ImageButton
-            android:id="@+id/btn_drag"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Drag to reorder"
-            android:src="@android:drawable/ic_menu_sort_by_size" />
-
-        <ImageButton
-            android:id="@+id/btn_delete"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Delete step"
-            android:src="@android:drawable/ic_menu_delete" />
-
-        <ImageButton
-            android:id="@+id/btn_step_play"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Run just this step"
-            android:src="@android:drawable/ic_media_play" />
-
-        <ImageButton
-            android:id="@+id/btn_step_menu"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Step actions"
-            android:src="@drawable/ic_more"
-            android:tint="?attr/colorControlNormal" />
+            android:contentDescription="@string/row_wait_edit_desc"
+            android:src="@android:drawable/ic_menu_edit"
+            android:tint="@color/text_secondary" />
     </LinearLayout>
-</com.google.android.material.card.MaterialCardView>
+</LinearLayout>

@@ -104,6 +104,7 @@ object WorkflowStore {
         put("updatedAt", w.updatedAt)
         put("dataType", w.dataType)
         put("dataFileName", w.dataFileName)
+        put("dataLibraryId", w.dataLibraryId)
         put("startRow", w.startRow)
         put("dataRepeat", w.dataRepeat)
         val steps = JSONArray()
@@ -131,6 +132,7 @@ object WorkflowStore {
             updatedAt = obj.optLong("updatedAt", System.currentTimeMillis()),
             dataType = obj.optString("dataType", ""),
             dataFileName = obj.optString("dataFileName", ""),
+            dataLibraryId = obj.optString("dataLibraryId", ""),
             startRow = obj.optInt("startRow", 1),
             dataRepeat = obj.optInt("dataRepeat", 0)
         )

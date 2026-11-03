@@ -257,13 +257,29 @@ object WorkflowRunner {
         // (plain cycles); a map entry means "run once for this row".
         val iterations: List<Map<String, String>?>
         val totalSteps: Int
-        if (workflow.dataType.isNotBlank()) {
+        if (workflow.dataType.isNotBlank() || workflow.dataLibraryId.isNotBlank()) {
             val ctx = appContext
             if (ctx == null) {
                 finish(workflow, Status.FAILED, noServiceMessage(), 0, workflow.steps.size)
                 return
             }
-            val loaded = DataSourceLoader.load(ctx, workflow)
+            // Library bridge: a Library source resolves via its stored
+            // entry (type + internal file name), then flows through the
+            // existing startRow/dataRepeat logic below unchanged. A
+            // deleted Library entry fails cleanly, like a missing file.
+            val loaded = if (workflow.dataLibraryId.isNotBlank()) {
+                val libraryFile = DataFileStore.get(ctx, workflow.dataLibraryId)
+                if (libraryFile == null) {
+                    finish(
+                        workflow, Status.FAILED,
+                        dataErrorMessage("Data file not found"), 0, workflow.steps.size
+                    )
+                    return
+                }
+                DataSourceLoader.loadFile(ctx, libraryFile.type, libraryFile.fileName)
+            } else {
+                DataSourceLoader.load(ctx, workflow)
+            }
             if (loaded.error != null) {
                 finish(
                     workflow, Status.FAILED,
@@ -1159,6 +1175,16 @@ object WorkflowRunner {
                             executeEmbedded(step.customSteps, index, chain, depth)
                         }
                         SuccessMode.JUMP -> {
+                            // Click-first applies in Jump mode too: the
+                            // editor shows the checkbox here, so it must
+                            // do something at run time (tap, then jump).
+                            if (step.clickFirst && outcome.point != null) {
+                                if (!service.tap(outcome.point)) {
+                                    return StepResult.Failed(
+                                        failMessage(index, "Tap failed")
+                                    )
+                                }
+                            }
                             when (val pre = executeEmbedded(step.customSteps, index, chain, depth)) {
                                 is StepResult.Success -> {
                                     if (step.jumpTarget < 0) {

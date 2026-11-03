@@ -1,5 +1,6 @@
 package com.nimu.omeeeye.ui
 
+import android.app.Activity
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -11,6 +12,7 @@ import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
+import android.net.Uri
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -18,6 +20,7 @@ import android.view.WindowManager
 import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import com.nimu.omeeeye.R
 import com.nimu.omeeeye.data.WorkflowStore
 import com.nimu.omeeeye.engine.AutomationService
@@ -28,10 +31,24 @@ import com.nimu.omeeeye.model.Step
 /**
  * Hosts the two floating overlays. Requires "Display over other apps".
  *
- * Idle bar (bound to one workflow): configure, play, target picker, close, expand.
- * Running panel: stop, pause, timer, step count, Back/Home/Recents, more.
- * Stopping a run ends it fully — there is no resume after stop (pause is
- * separate and only holds the run between steps).
+ * Idle bar (bound to one workflow), in reference order: configure
+ * (wrench), play, target picker, close, expand. Running panel, in
+ * reference order for the controls this app actually offers: red
+ * stop, pause, timer (+ step count), Back/Home/Recents, more
+ * (3-dot). The reference's undo / target / wait-indicator / OCR /
+ * image-recognition / palette slots are NOT drawn: no runner or
+ * recognition API behind them exists in this codebase, and drawing
+ * them would be fake functionality (see report).
+ *
+ * The bar never appears over the task editor: opening the editor
+ * from the bar removes the bar view, and opening the editor from
+ * anywhere else hides it via hideIdle() in TaskEditorActivity.onCreate
+ * (the service stays alive, and the bar returns via showIdle when a
+ * run ends, via Home CLOSE, or via the workflow card's Floating bar
+ * action when it is listed again). Runs only: the running panel shows
+ * while a workflow executes; stopping a run ends it fully — there
+ * is no resume after stop (pause is separate and only holds the run
+ * between steps).
  */
 class FloatingService : Service() {
 
@@ -43,8 +60,56 @@ class FloatingService : Service() {
         private const val NOTIF_ID = 1
         private const val CHANNEL_ID = "omeeeye_running"
 
+        // The live service, if any. Set in onCreate, cleared in
+        // onDestroy, so hideIdle() below never starts a service just
+        // to hide nothing (starting one would leave a stray foreground
+        // notification behind with no bar).
+        private var instance: FloatingService? = null
+
         fun startIdle(context: Context, workflowId: String) {
             start(context, ACTION_IDLE, workflowId)
+        }
+
+        /**
+         * The only entry point an Activity should use for the idle bar.
+         * The old Context overload left two steps to the caller —
+         * check the overlay permission, then move the task to the back
+         * — and a caller that forgot either one produced exactly the
+         * reported symptom (app backgrounds, no bar, or a silent
+         * nothing). This overload does both itself: missing permission
+         * shows the guide dialog and returns false, so the caller does
+         * nothing else; on success the bar is started and the task is
+         * moved to the back so the bar sits over the real screen.
+         */
+        fun startIdle(activity: Activity, workflowId: String): Boolean {
+            if (!Settings.canDrawOverlays(activity)) {
+                AlertDialog.Builder(activity)
+                    .setTitle(R.string.floating_mode_guide_title)
+                    .setMessage(R.string.floating_mode_guide_text)
+                    .setPositiveButton(R.string.floating_mode_guide_open_settings) { _, _ ->
+                        val intent = Intent(
+                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse("package:${activity.packageName}")
+                        )
+                        activity.startActivity(intent)
+                    }
+                    .setNegativeButton(R.string.cancel, null)
+                    .show()
+                return false
+            }
+            start(activity, ACTION_IDLE, workflowId)
+            activity.moveTaskToBack(true)
+            return true
+        }
+
+        /**
+         * Hides the idle bar only. Called on the main thread
+         * (TaskEditorActivity.onCreate). Never starts the
+         * service, never touches the running panel: a run must always
+         * stay stoppable, so only the idle view is dropped.
+         */
+        fun hideIdle() {
+            instance?.removeIdleView()
         }
 
         fun startRunning(context: Context, workflowId: String) {
@@ -100,11 +165,23 @@ class FloatingService : Service() {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         createChannel()
         startForeground(NOTIF_ID, buildNotification())
+        instance = this
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.getStringExtra(EXTRA_ACTION)) {
             ACTION_IDLE -> {
+                // A run must never lose its stop control: an idle
+                // request during a run must NOT drop the running panel
+                // (the old showIdle removed it first). Keep the panel;
+                // if it is somehow gone, restore it so the run stays
+                // stoppable. The requested id is deliberately NOT
+                // stored here, or the post-run bar would bind to the
+                // wrong workflow.
+                if (WorkflowRunner.isRunning()) {
+                    if (runningView == null) showRunning()
+                    return START_NOT_STICKY
+                }
                 workflowId = intent.getStringExtra(EXTRA_WORKFLOW_ID)
                 workflowId?.let { showIdle(it) }
             }
@@ -133,6 +210,7 @@ class FloatingService : Service() {
     override fun onDestroy() {
         WorkflowRunner.removeListener(runnerListener)
         removeViews()
+        if (instance == this) instance = null
         super.onDestroy()
     }
 
@@ -145,16 +223,30 @@ class FloatingService : Service() {
     }
 
     private fun showIdle(id: String) {
-        removeRunningView()
-        // A bar left over from another workflow used to block a new one:
-        // the old bar stayed bound to the old workflow's actions. Drop
-        // it and build fresh for this workflow instead.
-        removeIdleView()
+        // REAL remaining failure, fixed here: the old order removed
+        // the existing views FIRST and only then checked the overlay
+        // permission — so a re-invocation with the permission missing
+        // (or revoked since the bar was shown) destroyed the bar it
+        // already had and showed nothing, with only a toast to show
+        // for it. Checks now run before anything is removed, so a
+        // failed invocation leaves the previous bar untouched.
         if (!Settings.canDrawOverlays(this)) {
             // Never fail silently: say exactly why no bar appears.
             Toast.makeText(this, R.string.floating_bar_no_permission, Toast.LENGTH_LONG).show()
             return
         }
+        if (WorkflowStore.get(this, id) == null) {
+            // A bar bound to a deleted workflow would be worse than
+            // none: its Play step silently does nothing and its
+            // Configure step would open a brand-new workflow.
+            Toast.makeText(this, R.string.floating_mode_workflow_gone, Toast.LENGTH_LONG).show()
+            return
+        }
+        removeRunningView()
+        // A bar left over from another workflow used to block a new one:
+        // the old bar stayed bound to the old workflow's actions. Drop
+        // it and build fresh for this workflow instead.
+        removeIdleView()
         val view = LayoutInflater.from(this).inflate(R.layout.floating_idle, null)
         view.findViewById<View>(R.id.btn_configure).setOnClickListener {
             openEditor(id, pickTarget = false)
@@ -185,7 +277,16 @@ class FloatingService : Service() {
             fnVisibility(FloatingPanelPrefs.FN_PLAY)
         view.findViewById<View>(R.id.btn_target).visibility =
             fnVisibility(FloatingPanelPrefs.FN_TARGET)
-        windowManager.addView(view, overlayParams(y = 300))
+        try {
+            windowManager.addView(view, overlayParams(y = 300))
+        } catch (e: Exception) {
+            // addView used to throw out of onStartCommand uncaught
+            // (permission revoked between check and add, or a bad
+            // window token): the service died and no bar appeared
+            // with no message at all. Fail with a toast instead.
+            Toast.makeText(this, R.string.floating_mode_bar_failed, Toast.LENGTH_LONG).show()
+            return
+        }
         idleView = view
     }
 
@@ -240,6 +341,13 @@ class FloatingService : Service() {
     }
 
     private fun openEditor(id: String, pickTarget: Boolean) {
+        // Never over the editor: drop the bar view before the editor
+        // opens. The service itself keeps running, so the bar comes
+        // back via showIdle when a run ends; the user can also
+        // re-show it from the workflow card's Floating bar action.
+        // (The running panel is NOT dropped by More: it opens Home,
+        // not the editor, and a run must always stay stoppable.)
+        removeIdleView()
         val editor = Intent(this, TaskEditorActivity::class.java).apply {
             putExtra("workflow_id", id)
             putExtra("pick_target", pickTarget)

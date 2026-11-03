@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings for the capture overlay + floating bar rebuild (interior
+     work). Capture overlay text itself reuses the existing
+     button_capture_* strings; only floating-bar accessibility labels
+     are new here. All English, as required. -->
+<resources>
+    <string name="floating_configure">Configure</string>
+    <string name="floating_play">Play</string>
+    <string name="floating_target">Pick a point</string>
+    <string name="floating_close">Close</string>
+    <string name="floating_expand">Expand</string>
+    <string name="floating_stop">Stop</string>
+    <string name="floating_pause">Pause</string>
+    <string name="floating_back">Back key</string>
+    <string name="floating_home">Home key</string>
+    <string name="floating_recents">Recents key</string>
+    <string name="floating_more">More</string>
+</resources>

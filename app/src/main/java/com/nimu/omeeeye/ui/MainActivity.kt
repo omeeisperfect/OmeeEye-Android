@@ -6,7 +6,6 @@ import android.content.pm.ShortcutManager
 import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Build
-import android.provider.Settings
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -134,30 +133,12 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onFloatingBar(workflow: Workflow) {
-                // Real cause of "app minimises, no bar": when the overlay
-                // permission is missing, FloatingService.showIdle used to
-                // return silently, so the tap looked like a minimise.
-                // Show the guide dialog instead of failing silently, and
-                // move this task to the back so the bar sits over the
-                // real screen underneath (the overlay alone is not
-                // enough when the app itself covers the display).
-                if (!Settings.canDrawOverlays(this@MainActivity)) {
-                    AlertDialog.Builder(this@MainActivity)
-                        .setTitle(R.string.overlay_pick_title)
-                        .setMessage(R.string.overlay_pick_permission)
-                        .setPositiveButton(R.string.overlay_pick_open_settings) { _, _ ->
-                            val intent = Intent(
-                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                Uri.parse("package:${packageName}")
-                            )
-                            startActivity(intent)
-                        }
-                        .setNegativeButton(R.string.cancel, null)
-                        .show()
-                    return
-                }
+                // Card-menu "Floating bar" entry (8th item) and the
+                // Home CLOSE path share this: the Activity overload
+                // checks the overlay permission (guide dialog if
+                // missing), starts the bar, and moves this task to
+                // the back so the bar sits over the real screen.
                 FloatingService.startIdle(this@MainActivity, workflow.id)
-                moveTaskToBack(true)
             }
 
             override fun onPlay(workflow: Workflow) {
@@ -265,7 +246,7 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, TaskEditorActivity::class.java))
         }
 
-        btnClose.setOnClickListener { finish() }
+        btnClose.setOnClickListener { collapseToFloatingBar() }
 
         // Base-v2 bottom navigation: open the section screens.
         // Home is this screen, so its tab does nothing.
@@ -294,6 +275,43 @@ class MainActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleShortcutIntent(intent)
+    }
+
+    /**
+     * Home CLOSE collapses the app into the idle floating bar
+     * (reference behaviour) instead of exiting: the task is moved to
+     * the back and the bar floats over the real screen underneath.
+     * CLOSE has no per-workflow selection, so the bar binds to the
+     * most recently updated active workflow (loadActive is sorted by
+     * updatedAt descending); editing a workflow re-stamps it, so the
+     * workflow just edited is the one CLOSE collapses to.
+     *
+     * Active run: CLOSE must NOT strand the run. An idle bar would
+     * replace the running panel and hide its stop button, so during
+     * a run CLOSE only moves the task to the back and leaves the
+     * running panel (stop / pause) exactly as it is. The run is
+     * stopped from the panel, never from CLOSE.
+     *
+     * No workflows: no bar is faked — a dialog says to create one
+     * first, and Home stays open. Missing overlay permission: the
+     * guide dialog from FloatingService.startIdle is shown and
+     * nothing else happens (never a silent nothing).
+     */
+    private fun collapseToFloatingBar() {
+        if (WorkflowRunner.isRunning()) {
+            moveTaskToBack(true)
+            return
+        }
+        val latest = WorkflowStore.loadActive(this).firstOrNull()
+        if (latest == null) {
+            AlertDialog.Builder(this)
+                .setTitle(R.string.floating_mode_no_workflow_title)
+                .setMessage(R.string.floating_mode_no_workflow_text)
+                .setPositiveButton(R.string.ok, null)
+                .show()
+            return
+        }
+        FloatingService.startIdle(this, latest.id)
     }
 
     /** Runs the workflow named by a pinned shortcut, if it still exists. */

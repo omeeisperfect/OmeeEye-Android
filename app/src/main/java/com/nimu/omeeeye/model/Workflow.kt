@@ -256,6 +256,12 @@ data class Workflow(
     // Internal-storage file name of the copied data file (see
     // DataSourceLoader). Empty when dataType is empty.
     val dataFileName: String = "",
+    // Library-file bridge: id of a DataFileStore entry chosen as the
+    // workflow-level data source. "" = no Library source. When
+    // non-blank it is the sole workflow source (dataType/dataFileName
+    // are cleared on selection, and vice versa), so the source is
+    // unambiguous. Defaults to "" so old workflows load unchanged.
+    val dataLibraryId: String = "",
     // 1-based row to start from (default 1 = first row).
     val startRow: Int = 1,
     // Rows to run when a data source is attached; 0 = all remaining rows

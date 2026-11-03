@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Idle floating bar: shown when a workflow is bound but not running. -->
+<!-- Idle floating bar: shown when a workflow is bound but not running.
+     Dark pill in both themes (floating_bg / overlay_bar), in reference
+     order: configure (wrench), play, target, close, expand. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
@@ -13,7 +15,7 @@
         android:layout_width="44dp"
         android:layout_height="44dp"
         android:background="?attr/selectableItemBackgroundBorderless"
-        android:contentDescription="Configure"
+        android:contentDescription="@string/floating_configure"
         android:src="@android:drawable/ic_menu_manage"
         android:tint="@color/overlay_bar_text" />
 
@@ -22,7 +24,7 @@
         android:layout_width="44dp"
         android:layout_height="44dp"
         android:background="?attr/selectableItemBackgroundBorderless"
-        android:contentDescription="Play"
+        android:contentDescription="@string/floating_play"
         android:src="@android:drawable/ic_media_play"
         android:tint="@color/overlay_bar_text" />
 
@@ -31,7 +33,7 @@
         android:layout_width="44dp"
         android:layout_height="44dp"
         android:background="?attr/selectableItemBackgroundBorderless"
-        android:contentDescription="Pick a point"
+        android:contentDescription="@string/floating_target"
         android:src="@android:drawable/ic_menu_mylocation"
         android:tint="@color/overlay_bar_text" />
 
@@ -40,7 +42,7 @@
         android:layout_width="44dp"
         android:layout_height="44dp"
         android:background="?attr/selectableItemBackgroundBorderless"
-        android:contentDescription="Close"
+        android:contentDescription="@string/floating_close"
         android:src="@android:drawable/ic_menu_close_clear_cancel"
         android:tint="@color/overlay_bar_text" />
 
@@ -50,6 +52,7 @@
         android:layout_height="44dp"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:clickable="true"
+        android:contentDescription="@string/floating_expand"
         android:focusable="true"
         android:gravity="center"
         android:text="»"

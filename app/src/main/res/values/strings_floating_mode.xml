@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Floating mode strings (Home CLOSE collapse + floating bar guide).
+     All English. Kept in its own file so other builders' strings files
+     are never touched. -->
+<resources>
+    <string name="floating_mode_guide_title">Display over other apps needed</string>
+    <string name="floating_mode_guide_text">The floating bar needs permission to display over other apps. Tap Open settings to allow it, then tap CLOSE again.</string>
+    <string name="floating_mode_guide_open_settings">Open settings</string>
+    <string name="floating_mode_no_workflow_title">No workflow yet</string>
+    <string name="floating_mode_no_workflow_text">Create a workflow first, then tap CLOSE to collapse it into the floating bar.</string>
+    <string name="floating_mode_workflow_gone">This workflow no longer exists, so no floating bar was shown.</string>
+    <string name="floating_mode_bar_failed">Could not show the floating bar. Try again.</string>
+</resources>

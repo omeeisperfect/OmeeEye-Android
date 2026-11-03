@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Task editor rows + editor header + home card menu (interior rebuild).
+         All English. No string here is a location: durations, waits and
+         cycles are plain numbers from the real step/workflow fields. -->
+
+    <!-- First line of a step row: the step's real duration, or nothing
+         when the step has no duration (never a fake number). -->
+    <string name="step_duration_format">%1$dms</string>
+    <!-- Wait line below a step card: the step's real wait-after value. -->
+    <string name="step_wait_after_format">Wait: %1$dms</string>
+
+    <!-- Row quick actions. -->
+    <string name="row_edit_desc">Edit step</string>
+    <string name="row_preview_desc">Preview step</string>
+    <string name="row_swap_desc">Swap with next step</string>
+    <string name="row_wait_edit_desc">Edit wait after step</string>
+
+    <!-- Recognition branch pills shown on the row itself. The pill text
+         is the step's real success / failure action, with a dropdown
+         marker; tapping a pill opens the step editor, which holds the
+         success / failure pickers for that section. -->
+    <string name="branch_success_click">Perform click</string>
+    <string name="branch_success_custom">Custom actions</string>
+    <string name="branch_success_jump">Jump &amp; Continue</string>
+    <string name="branch_failure_ignore">Ignore</string>
+    <string name="branch_failure_custom">Custom actions</string>
+    <string name="branch_failure_jump">Jump &amp; Continue</string>
+
+    <!-- Read-only step preview dialog (eye icon). Every line is a real
+         field of the step; lines for fields the step does not have are
+         omitted, never filled with a placeholder value. -->
+    <string name="step_preview_title">Step preview</string>
+    <string name="step_preview_duration">Duration: %1$dms</string>
+    <string name="step_preview_wait">Wait after: %1$dms</string>
+    <string name="step_preview_cycles">Cycles: %1$d</string>
+    <string name="step_preview_point">Point: (%1$d, %2$d)</string>
+    <string name="step_preview_swipe">Swipe: (%1$d, %2$d) to (%3$d, %4$d)</string>
+    <string name="step_preview_text">Text: %1$s</string>
+    <string name="step_preview_key">Key: %1$s</string>
+    <string name="step_preview_package">App: %1$s</string>
+    <string name="step_preview_match">Match: %1$s</string>
+    <string name="step_preview_success">When found: %1$s</string>
+    <string name="step_preview_failure">When not found: %1$s</string>
+    <string name="step_preview_variable">Variable: %1$s</string>
+    <string name="step_preview_wait_random">Random wait: %1$d to %2$dms</string>
+
+    <!-- Editor header: rename pencil + help icon. -->
+    <string name="editor_rename_desc">Rename workflow</string>
+    <string name="editor_help_desc">Editor help</string>
+    <string name="editor_help_title">Task editor help</string>
+    <string name="editor_help_text">Add steps with ADD, reorder by dragging the handle on a step, tap a step to edit it, and tap the eye icon to preview it. SAVE keeps your changes and CANCEL discards them. Each step can have a wait after it: tap the Wait line below a step to change it.</string>
+
+    <!-- Home card menu labels, exactly as specified. The first three
+         reuse existing strings; these four are new only because the
+         existing labels differ in wording or case. -->
+    <string name="card_menu_copy_task">copy task</string>
+    <string name="card_menu_share_task">Share task</string>
+    <string name="card_menu_shortcut_item">shortcut</string>
+    <string name="card_menu_delete_item">delete</string>
+</resources>

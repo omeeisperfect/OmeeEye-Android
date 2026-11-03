@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Library-file -> workflow Repeat-source bridge. English only. -->
+<resources>
+    <string name="data_library_use">Use Library file…</string>
+    <string name="data_library_empty">No Library files yet. Add a file in Library first.</string>
+    <string name="data_library_attached">Library file selected as data source</string>
+    <string name="data_library_current_format">Library file: %1$s\nType: %2$s\nStart row: %3$d\nRepeat: %4$d (0 = all remaining rows)</string>
+    <string name="data_library_missing">Library file no longer exists (it was deleted). Pick another data source.\nStart row: %1$d\nRepeat: %2$d (0 = all remaining rows)</string>
+</resources>

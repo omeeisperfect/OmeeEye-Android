@@ -1,5 +1,6 @@
 package com.nimu.omeeeye.ui
 
+import android.graphics.Typeface
 import android.os.Bundle
 import android.text.InputType
 import android.view.LayoutInflater
@@ -9,6 +10,8 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.LinearLayout
+import android.widget.TableLayout
+import android.widget.TableRow
 import android.widget.TextView
 import android.widget.Toast
 import android.provider.OpenableColumns
@@ -20,6 +23,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.nimu.omeeeye.R
 import com.nimu.omeeeye.data.CodeLibraryStore
 import com.nimu.omeeeye.data.DataFileStore
+import com.nimu.omeeeye.data.DataSourceLoader
 import com.nimu.omeeeye.data.WorkflowStore
 import com.nimu.omeeeye.model.Step
 
@@ -128,7 +132,8 @@ class LibraryActivity : AppCompatActivity() {
         dataFileList = findViewById(R.id.data_file_list)
         dataEmptyText = findViewById(R.id.data_empty_text)
         dataAdapter = DataFileAdapter(
-            onDelete = { file -> showDataDeleteDialog(file) }
+            onDelete = { file -> showDataDeleteDialog(file) },
+            onOpen = { file -> showDatasetView(file) }
         )
         dataFileList.layoutManager = LinearLayoutManager(this)
         dataFileList.adapter = dataAdapter
@@ -154,7 +159,9 @@ class LibraryActivity : AppCompatActivity() {
         dataFileList.visibility = if (dataFiles.isEmpty()) View.GONE else View.VISIBLE
     }
 
-    /** Counts steps (including nested sub-action lists) using a data file. */
+    /** Counts steps (including nested sub-action lists) using a data file,
+     *  plus workflows using it as their workflow-level data source
+     *  (dataLibraryId), so the delete warning covers both uses. */
     private fun countDataFileReferences(fileId: String): Int {
         fun scan(steps: List<Step>): Int {
             var count = 0
@@ -166,7 +173,92 @@ class LibraryActivity : AppCompatActivity() {
             }
             return count
         }
-        return WorkflowStore.loadAll(this).sumOf { scan(it.steps) }
+        return WorkflowStore.loadAll(this).sumOf { workflow ->
+            scan(workflow.steps) + if (workflow.dataLibraryId == fileId) 1 else 0
+        }
+    }
+
+    /** Display form of a stored type: the stored "EXCEL" reads "Excel". */
+    private fun displayType(type: String): String =
+        if (type == "EXCEL") getString(R.string.library_dataset_type_excel)
+        else type
+
+    /**
+     * Dataset view: tapping a Library data file opens a dialog preview
+     * parsed with exactly the runner's rules (DataSourceLoader.loadFile):
+     * TXT = one value per line under TEXT, CSV = header row + quoted
+     * fields, Excel = first sheet, values only. At most the first 10
+     * rows are shown, in a table that scrolls both ways. An unreadable
+     * file shows its loader error, never an empty fake table; a
+     * readable file with no data rows says so. Closing the dialog
+     * (Close button or back) returns to the list, which stays
+     * underneath untouched.
+     */
+    private fun showDatasetView(file: DataFileStore.DataFile) {
+        val view = layoutInflater.inflate(R.layout.dialog_dataset_view, null)
+        val nameView: TextView = view.findViewById(R.id.dataset_file_name)
+        val metaView: TextView = view.findViewById(R.id.dataset_meta)
+        val noteView: TextView = view.findViewById(R.id.dataset_note)
+        val errorView: TextView = view.findViewById(R.id.dataset_error)
+        val emptyView: TextView = view.findViewById(R.id.dataset_empty)
+        val table: TableLayout = view.findViewById(R.id.dataset_table)
+        nameView.text = file.name
+        val typeLabel = displayType(file.type)
+        val loaded = DataSourceLoader.loadFile(this, file.type, file.fileName)
+        val error = loaded.error
+        when {
+            error != null -> {
+                metaView.text = typeLabel
+                errorView.text =
+                    getString(R.string.library_dataset_error, error)
+                errorView.visibility = View.VISIBLE
+                table.visibility = View.GONE
+            }
+            loaded.rows.isEmpty() -> {
+                metaView.text =
+                    getString(R.string.library_dataset_meta, typeLabel, 0)
+                emptyView.visibility = View.VISIBLE
+                table.visibility = View.GONE
+            }
+            else -> {
+                val columns = loaded.rows[0].keys.filter { it != "ROW" }
+                metaView.text = getString(
+                    R.string.library_dataset_meta,
+                    typeLabel, loaded.rows.size
+                )
+                if (loaded.rows.size > 10) noteView.visibility = View.VISIBLE
+                val headerRow = TableRow(this)
+                columns.forEach { headerRow.addView(datasetCell(it, true)) }
+                table.addView(headerRow)
+                loaded.rows.take(10).forEach { row ->
+                    val tableRow = TableRow(this)
+                    columns.forEach { column ->
+                        tableRow.addView(datasetCell(row[column] ?: "", false))
+                    }
+                    table.addView(tableRow)
+                }
+            }
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.library_dataset_title)
+            .setView(view)
+            .setPositiveButton(R.string.library_dataset_close, null)
+            .show()
+    }
+
+    /**
+     * One dataset table cell. Colour comes from the @color/... resource
+     * (night variant applies automatically) — never a hardcoded hex.
+     */
+    private fun datasetCell(text: String, bold: Boolean): TextView {
+        val padH = (12 * resources.displayMetrics.density).toInt()
+        val padV = (6 * resources.displayMetrics.density).toInt()
+        return TextView(this).apply {
+            this.text = text
+            setPadding(padH, padV, padH, padV)
+            setTextColor(resources.getColor(R.color.text_primary, theme))
+            if (bold) setTypeface(typeface, Typeface.BOLD)
+        }
     }
 
     private fun showDataDeleteDialog(file: DataFileStore.DataFile) {
@@ -324,11 +416,13 @@ class LibraryActivity : AppCompatActivity() {
 
     /**
      * Data file rows. Reuses the snippet row layout (name + preview +
-     * delete button): rows are display-only — a data file has no edit
-     * dialog — and deletion goes through [showDataDeleteDialog].
+     * delete button): tapping a row opens the dataset view
+     * ([showDatasetView]) — a data file has no edit dialog — and
+     * deletion goes through [showDataDeleteDialog].
      */
-    private class DataFileAdapter(
-        private val onDelete: (DataFileStore.DataFile) -> Unit
+    private inner class DataFileAdapter(
+        private val onDelete: (DataFileStore.DataFile) -> Unit,
+        private val onOpen: (DataFileStore.DataFile) -> Unit
     ) : RecyclerView.Adapter<DataFileAdapter.ViewHolder>() {
 
         private var items: List<DataFileStore.DataFile> = emptyList()
@@ -354,7 +448,10 @@ class LibraryActivity : AppCompatActivity() {
         override fun onBindViewHolder(holder: ViewHolder, position: Int) {
             val file = items[position]
             holder.fileName.text = file.name
-            holder.filePreview.text = "${file.type} data file"
+            holder.filePreview.text = getString(
+                R.string.library_dataset_row_preview, displayType(file.type)
+            )
+            holder.itemView.setOnClickListener { onOpen(file) }
             holder.itemView.setOnLongClickListener {
                 onDelete(file)
                 true

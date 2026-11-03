@@ -250,34 +250,18 @@ class RecognitionEditActivity : AppCompatActivity() {
                 preview.visibility = View.VISIBLE
             }
         }
-        // Button capture (item 3): a capture stored by
-        // ButtonCaptureService fills the identification fields and is
-        // consumed (cleared) here. Only non-empty parts overwrite:
-        // an id/description-only capture must not wipe typed text.
+        // Button capture: a capture stored by ButtonCaptureService
+        // is consumed (cleared) here and opens the Button detail
+        // dialog (reference flow) instead of silently filling fields
+        // below the fold. Only non-empty parts overwrite: an
+        // id/description-only capture must not wipe typed text.
         // Null = no capture (cancel / failure) -> nothing changes.
+        // CANCEL in the dialog restores the pre-capture values.
         val captured = ButtonCaptureStore.take()
         if (captured != null && stepType == StepType.BUTTON_RECOGNITION &&
             ::editButtonText.isInitialized
         ) {
-            if (captured.text.isNotEmpty()) {
-                editButtonText.setText(captured.text)
-            }
-            if (captured.viewId.isNotEmpty()) {
-                editButtonId.setText(captured.viewId)
-            }
-            if (captured.description.isNotEmpty()) {
-                editButtonDesc.setText(captured.description)
-            }
-            // The detail summary opens right here, above the fields,
-            // and the form scrolls to it so the capture is visible
-            // instead of silently filling fields below the fold.
-            refreshButtonDetails()
-            val buttonGroup = findViewById<View>(R.id.group_button)
-            buttonGroup.post {
-                val content = findViewById<android.view.ViewGroup>(android.R.id.content)
-                val scroll = content?.getChildAt(0) as? android.widget.ScrollView
-                scroll?.smoothScrollTo(0, buttonGroup.top)
-            }
+            showButtonDetailDialog(captured)
         }
         // Resume a permission-blocked pick the moment the grant exists.
         // This must run before the early returns below: on the blocked
@@ -624,35 +608,17 @@ class RecognitionEditActivity : AppCompatActivity() {
         afterJumpGroup = findViewById(R.id.after_jump_group)
         textAfterJumpStatus = findViewById(R.id.text_after_jump_status)
         btnSave = findViewById(R.id.btn_rec_save)
+        pickerCycles = findViewById(R.id.picker_cycles)
     }
 
     /**
-     * Programmatic UI that would otherwise need layout edits: a Cycles
-     * picker section before the Save / Close row (all four recognition
-     * types), and "Pick anchor point" + anchor status inside the Color
-     * group. The layout file itself is untouched.
+     * Programmatic UI: "Pick anchor point" + anchor status inside the
+     * Color group, the Button detail summary + capture button, and
+     * the OCR test-read button + preview. The Cycles picker now lives
+     * in the layout file (before the Save / Close row, all four
+     * recognition types) and is bound in bindViews().
      */
     private fun addProgrammaticSections() {
-        val bottomRow = btnSave.parent as View
-        val form = bottomRow.parent as LinearLayout
-        val section = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            val pad = (16 * resources.displayMetrics.density).toInt()
-            setPadding(pad, pad, pad, pad)
-        }
-        section.addView(
-            TextView(this).apply {
-                text = getString(R.string.rec_cycles_title)
-            }
-        )
-        pickerCycles = NumberPicker(this).apply {
-            minValue = 1
-            maxValue = 99
-            value = stepCycles.coerceIn(1, 99)
-        }
-        section.addView(pickerCycles)
-        form.addView(section, form.indexOfChild(bottomRow))
-
         val colorGroup = findViewById<LinearLayout>(R.id.group_color)
         btnPickAnchor = Button(this).apply {
             text = getString(R.string.color_anchor_pick)
@@ -804,10 +770,7 @@ class RecognitionEditActivity : AppCompatActivity() {
             summary.visibility = View.GONE
             return
         }
-        val judgment = when (matchMode) {
-            MatchMode.EXACT -> getString(R.string.rec_judgment_exact)
-            MatchMode.PARTIAL -> getString(R.string.rec_judgment_partial)
-        }
+        val judgment = judgmentLabel(matchMode)
         val area = when (areaMode) {
             AreaMode.FULLSCREEN -> getString(R.string.rec_area_fullscreen)
             AreaMode.REGION -> if (hasRegion) {
@@ -824,6 +787,177 @@ class RecognitionEditActivity : AppCompatActivity() {
             "${getString(R.string.rec_button_id_label)}: ${id.ifEmpty { empty }}\n" +
             "${getString(R.string.rec_button_desc_label)}: ${desc.ifEmpty { empty }}"
         summary.visibility = View.VISIBLE
+    }
+
+    /**
+     * Button detail dialog (reference flow), shown after a screen
+     * capture returns. Order matches the reference: Judgment method,
+     * Recognition area (Fullscreen / Region + pick-region control
+     * that launches the existing overlay region pick), button text
+     * (with the manual-entry note), button ID, button description,
+     * then CANCEL / OK.
+     *
+     * Captured values are applied to the form first (non-empty parts
+     * only, as before) so the dialog edits real values; CANCEL
+     * restores the pre-capture judgment, area, region and fields, so
+     * a discarded capture changes nothing. OK applies the dialog's
+     * edits. "Pick region on screen" applies the dialog's edits,
+     * closes the dialog and launches the existing overlay pick.
+     * Nothing here changes stored semantics: judgment still maps to
+     * MatchMode, area to AreaMode, region to the picked region.
+     */
+    private fun showButtonDetailDialog(
+        captured: ButtonCaptureStore.CapturedButton
+    ) {
+        val oldText = editButtonText.text.toString()
+        val oldId = editButtonId.text.toString()
+        val oldDesc = editButtonDesc.text.toString()
+        val oldMatchMode = matchMode
+        val oldAreaMode = areaMode
+        val oldLeft = regionLeft
+        val oldTop = regionTop
+        val oldRight = regionRight
+        val oldBottom = regionBottom
+        if (captured.text.isNotEmpty()) {
+            editButtonText.setText(captured.text)
+        }
+        if (captured.viewId.isNotEmpty()) {
+            editButtonId.setText(captured.viewId)
+        }
+        if (captured.description.isNotEmpty()) {
+            editButtonDesc.setText(captured.description)
+        }
+        refreshButtonDetails()
+
+        val density = resources.displayMetrics.density
+        val pad = (16 * density).toInt()
+        val smallPad = (4 * density).toInt()
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, pad)
+        }
+        fun addLabel(text: String) {
+            layout.addView(
+                TextView(this).apply {
+                    this.text = text
+                    setPadding(0, smallPad, 0, smallPad)
+                }
+            )
+        }
+        addLabel(getString(R.string.add_detail_judgment))
+        val judgmentGroup = RadioGroup(this).apply {
+            orientation = RadioGroup.VERTICAL
+        }
+        val sameButton = android.widget.RadioButton(this).apply {
+            text = getString(R.string.add_judgment_same)
+            isChecked = matchMode == MatchMode.EXACT
+        }
+        val containsButton = android.widget.RadioButton(this).apply {
+            text = getString(R.string.add_judgment_contains)
+            isChecked = matchMode == MatchMode.PARTIAL
+        }
+        judgmentGroup.addView(sameButton)
+        judgmentGroup.addView(containsButton)
+        layout.addView(judgmentGroup)
+
+        addLabel(getString(R.string.add_detail_area))
+        val areaGroup = RadioGroup(this).apply {
+            orientation = RadioGroup.VERTICAL
+        }
+        val fullscreenButton = android.widget.RadioButton(this).apply {
+            text = getString(R.string.rec_area_fullscreen)
+            isChecked = areaMode != AreaMode.REGION
+        }
+        val regionButton = android.widget.RadioButton(this).apply {
+            text = getString(R.string.rec_area_region)
+            isChecked = areaMode == AreaMode.REGION
+        }
+        areaGroup.addView(fullscreenButton)
+        areaGroup.addView(regionButton)
+        layout.addView(areaGroup)
+        val regionStatus = TextView(this).apply {
+            text = if (hasRegion) {
+                getString(R.string.rec_region_picked)
+            } else {
+                getString(R.string.rec_region_not_picked)
+            }
+            setPadding(0, smallPad, 0, smallPad)
+        }
+        layout.addView(regionStatus)
+        val pickRegionButton = Button(this).apply {
+            text = getString(R.string.rec_pick_region)
+        }
+        layout.addView(pickRegionButton)
+
+        addLabel(getString(R.string.add_detail_button_text))
+        val textInput = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT
+            setText(editButtonText.text.toString())
+        }
+        layout.addView(textInput)
+        layout.addView(
+            TextView(this).apply {
+                text = getString(R.string.rec_button_text_help)
+                setPadding(0, smallPad, 0, smallPad)
+            }
+        )
+        addLabel(getString(R.string.add_detail_button_id))
+        val idInput = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT
+            setText(editButtonId.text.toString())
+        }
+        layout.addView(idInput)
+        addLabel(getString(R.string.add_detail_button_desc))
+        val descInput = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT
+            setText(editButtonDesc.text.toString())
+        }
+        layout.addView(descInput)
+
+        fun applyDialogEdits() {
+            matchMode =
+                if (containsButton.isChecked) MatchMode.PARTIAL else MatchMode.EXACT
+            areaMode =
+                if (regionButton.isChecked) AreaMode.REGION else AreaMode.FULLSCREEN
+            editButtonText.setText(textInput.text.toString())
+            editButtonId.setText(idInput.text.toString())
+            editButtonDesc.setText(descInput.text.toString())
+            refreshJudgmentButton()
+            refreshAreaViews()
+            refreshButtonDetails()
+            refreshRegionStatuses()
+            refreshSaveEnabled()
+        }
+        fun restorePreCapture() {
+            matchMode = oldMatchMode
+            areaMode = oldAreaMode
+            regionLeft = oldLeft
+            regionTop = oldTop
+            regionRight = oldRight
+            regionBottom = oldBottom
+            editButtonText.setText(oldText)
+            editButtonId.setText(oldId)
+            editButtonDesc.setText(oldDesc)
+            refreshJudgmentButton()
+            refreshAreaViews()
+            refreshButtonDetails()
+            refreshRegionStatuses()
+            refreshSaveEnabled()
+        }
+        val scroll = android.widget.ScrollView(this)
+        scroll.addView(layout)
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.add_detail_title)
+            .setView(scroll)
+            .setPositiveButton(R.string.ok) { _, _ -> applyDialogEdits() }
+            .setNegativeButton(R.string.cancel) { _, _ -> restorePreCapture() }
+            .create()
+        pickRegionButton.setOnClickListener {
+            applyDialogEdits()
+            dialog.dismiss()
+            launchPickRegion("area")
+        }
+        dialog.show()
     }
 
     private fun refreshAnchorViews() {
@@ -996,11 +1130,19 @@ class RecognitionEditActivity : AppCompatActivity() {
         refreshSaveEnabled()
     }
 
+    /**
+     * Judgment method, reference labels. The stored semantics are
+     * unchanged: EXACT = the text must be exactly the same ("Same"),
+     * PARTIAL = the text must contain the value ("Contains"). The
+     * step default is EXACT, so a new step shows "Same".
+     */
+    private fun judgmentLabel(mode: MatchMode): String = when (mode) {
+        MatchMode.EXACT -> getString(R.string.add_judgment_same)
+        MatchMode.PARTIAL -> getString(R.string.add_judgment_contains)
+    }
+
     private fun refreshJudgmentButton() {
-        btnJudgment.text = when (matchMode) {
-            MatchMode.EXACT -> getString(R.string.rec_judgment_exact)
-            MatchMode.PARTIAL -> getString(R.string.rec_judgment_partial)
-        }
+        btnJudgment.text = judgmentLabel(matchMode)
     }
 
     private fun refreshAreaViews() {
@@ -1075,9 +1217,19 @@ class RecognitionEditActivity : AppCompatActivity() {
             } else {
                 View.GONE
             }
-        // The click-first switch only applies to Custom mode.
+        // The click-first switch shows in Custom mode and in Jump &
+        // Continue mode (reference flow). Runner note, semantics
+        // unchanged: the runner taps first only for Custom mode; a
+        // click-first value saved under Jump mode is ignored at run
+        // time until the runner is changed to honour it there.
         switchClickFirst.visibility =
-            if (successMode == SuccessMode.CUSTOM) View.VISIBLE else View.GONE
+            if (successMode == SuccessMode.CUSTOM ||
+                successMode == SuccessMode.JUMP
+            ) {
+                View.VISIBLE
+            } else {
+                View.GONE
+            }
         successJumpGroup.visibility =
             if (successMode == SuccessMode.JUMP) View.VISIBLE else View.GONE
     }
@@ -1380,8 +1532,8 @@ class RecognitionEditActivity : AppCompatActivity() {
 
     private fun showJudgmentDialog() {
         val labels = arrayOf(
-            getString(R.string.rec_judgment_exact),
-            getString(R.string.rec_judgment_partial)
+            getString(R.string.add_judgment_same),
+            getString(R.string.add_judgment_contains)
         )
         var selected = if (matchMode == MatchMode.EXACT) 0 else 1
         AlertDialog.Builder(this)

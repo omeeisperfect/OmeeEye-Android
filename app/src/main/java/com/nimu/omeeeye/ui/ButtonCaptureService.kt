@@ -70,12 +70,14 @@ object ButtonCaptureStore {
  * the back, so the real screen shows underneath this overlay.
  *
  * The service reads AutomationService.instance?.rootInActiveWindow and
- * collects clickable nodes with their text, view id, content
- * description and screen bounds, drawing a red outline over each.
- * Initially only nodes with non-empty text are shown; "Show more"
- * reveals nodes that have only an id / description. Tapping an
- * outlined node stores it in ButtonCaptureStore and returns to the
- * editor. Cancel returns without storing anything.
+ * collects clickable LEAF nodes with their text, view id, content
+ * description and screen bounds, drawing a red outline over each
+ * leaf only — never over a container that holds clickable leaves
+ * (see visitNode). Initially only nodes with non-empty text are
+ * shown; "Show more" reveals nodes that have only an id /
+ * description. Tapping an outlined node stores it in
+ * ButtonCaptureStore and returns to the editor. Cancel returns
+ * without storing anything.
  *
  * Honest failures, never invented buttons: accessibility service off
  * or no clickable nodes -> toast and return with nothing stored.
@@ -226,33 +228,28 @@ class ButtonCaptureService : Service() {
     }
 
     /**
-     * Depth-first collection. A node is kept only when it is clickable,
-     * has a non-empty on-screen rect, and carries at least one of text,
-     * view id or content description — a node with none of the three
-     * cannot identify a button, so keeping it would only draw a
-     * rectangle the editor could never use. Each visited node is
-     * recycled exactly once by its parent loop (root by the caller).
+     * Leaf-descent collection (capture-overlay outline fix). Children
+     * are visited FIRST (post-order) and the method returns true when
+     * this subtree outlined at least one node. A node is outlined
+     * only when it is clickable, has a non-empty on-screen rect, and
+     * carries at least one of text, view id or content description —
+     * AND no descendant was outlined. So a clickable container (a
+     * launcher row, a list, a grid) holding clickable leaves is never
+     * outlined itself: the leaves' tight boxes are drawn instead, and
+     * no row-spanning or empty-area box appears. A clickable node
+     * with no outlined descendant is itself the tappable leaf (e.g.
+     * a row whose children are plain, non-clickable text), so it is
+     * still outlined — suppressing it would delete a real button.
+     * Descent runs through every level before this node is decided,
+     * so a container is never drawn as a substitute for leaves that
+     * exist below it. Each visited node is recycled exactly once by
+     * its parent loop (root by the caller).
      */
     private fun visitNode(
         node: AccessibilityNodeInfo,
         out: MutableList<CapturedNode>
-    ) {
-        try {
-            if (node.isClickable) {
-                val bounds = Rect()
-                node.getBoundsInScreen(bounds)
-                val text = node.text?.toString() ?: ""
-                val viewId = node.viewIdResourceName ?: ""
-                val desc = node.contentDescription?.toString() ?: ""
-                if (bounds.width() > 0 && bounds.height() > 0 &&
-                    (text.isNotEmpty() || viewId.isNotEmpty() || desc.isNotEmpty())
-                ) {
-                    out.add(CapturedNode(text, viewId, desc, bounds))
-                }
-            }
-        } catch (e: Exception) {
-            // One unreadable node must not lose the whole capture.
-        }
+    ): Boolean {
+        var yielded = false
         for (i in 0 until node.childCount) {
             val child = try {
                 node.getChild(i)
@@ -260,7 +257,7 @@ class ButtonCaptureService : Service() {
                 null
             } ?: continue
             try {
-                visitNode(child, out)
+                if (visitNode(child, out)) yielded = true
             } catch (e: Exception) {
                 // Skip a broken subtree, keep the rest.
             } finally {
@@ -271,6 +268,24 @@ class ButtonCaptureService : Service() {
                 }
             }
         }
+        try {
+            if (!yielded && node.isClickable) {
+                val bounds = Rect()
+                node.getBoundsInScreen(bounds)
+                val text = node.text?.toString() ?: ""
+                val viewId = node.viewIdResourceName ?: ""
+                val desc = node.contentDescription?.toString() ?: ""
+                if (bounds.width() > 0 && bounds.height() > 0 &&
+                    (text.isNotEmpty() || viewId.isNotEmpty() || desc.isNotEmpty())
+                ) {
+                    out.add(CapturedNode(text, viewId, desc, bounds))
+                    yielded = true
+                }
+            }
+        } catch (e: Exception) {
+            // One unreadable node must not lose the whole capture.
+        }
+        return yielded
     }
 
     /** Nodes currently drawn: text nodes first, plus id/desc-only on Show more. */
@@ -346,10 +361,13 @@ class ButtonCaptureService : Service() {
             if (event.action == MotionEvent.ACTION_UP) {
                 val x = event.rawX.toInt()
                 val y = event.rawY.toInt()
-                // Last drawn = topmost: later nodes in traversal order
-                // are deeper / later in the tree and usually on top.
-                val hit = visibleNodes().asReversed()
-                    .firstOrNull { it.bounds.contains(x, y) }
+                // Tightest box wins: leaf-only outlines no longer
+                // nest, but siblings can still overlap (icon +
+                // label), so the smallest containing box is the leaf
+                // the user meant to tap.
+                val hit = visibleNodes()
+                    .filter { it.bounds.contains(x, y) }
+                    .minByOrNull { it.bounds.width() * it.bounds.height() }
                 if (hit != null) {
                     ButtonCaptureStore.put(hit.text, hit.viewId, hit.description)
                     Toast.makeText(
