@@ -423,7 +423,7 @@ class LibraryActivity : AppCompatActivity() {
     private inner class DataFileAdapter(
         private val onDelete: (DataFileStore.DataFile) -> Unit,
         private val onOpen: (DataFileStore.DataFile) -> Unit
-    ) : RecyclerView.Adapter<DataFileAdapter.ViewHolder>() {
+    ) : RecyclerView.Adapter<DataFileViewHolder>() {
 
         private var items: List<DataFileStore.DataFile> = emptyList()
 
@@ -432,20 +432,13 @@ class LibraryActivity : AppCompatActivity() {
             notifyDataSetChanged()
         }
 
-        class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
-            val fileName: TextView = view.findViewById(R.id.snippet_name)
-            val filePreview: TextView = view.findViewById(R.id.snippet_preview)
-            val deleteButton: ImageButton =
-                view.findViewById(R.id.btn_delete_snippet)
-        }
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): DataFileViewHolder {
             val view = LayoutInflater.from(parent.context)
                 .inflate(R.layout.item_snippet_row, parent, false)
-            return ViewHolder(view)
+            return DataFileViewHolder(view)
         }
 
-        override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+        override fun onBindViewHolder(holder: DataFileViewHolder, position: Int) {
             val file = items[position]
             holder.fileName.text = file.name
             holder.filePreview.text = getString(
@@ -460,5 +453,15 @@ class LibraryActivity : AppCompatActivity() {
         }
 
         override fun getItemCount(): Int = items.size
+    }
+
+    // ViewHolder lives at activity level, not inside the inner adapter:
+    // Kotlin does not allow a class declared inside an inner class
+    // (that was the CI error at DataFileAdapter.ViewHolder).
+    private class DataFileViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+        val fileName: TextView = view.findViewById(R.id.snippet_name)
+        val filePreview: TextView = view.findViewById(R.id.snippet_preview)
+        val deleteButton: ImageButton =
+            view.findViewById(R.id.btn_delete_snippet)
     }
 }
