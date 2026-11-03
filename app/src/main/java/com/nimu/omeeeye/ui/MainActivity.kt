@@ -21,6 +21,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.nimu.omeeeye.R
@@ -54,6 +55,12 @@ class MainActivity : AppCompatActivity() {
         // Duplicate already exists per workflow card and is untouched.
         private const val MENU_EXPORT = 5
         private const val MENU_IMPORT = 6
+        // Sections formerly reached from the removed bottom nav; they
+        // now live in the 3-dot menu instead (same activities, same
+        // intents — only the entry point moved).
+        private const val MENU_TRIGGERS = 7
+        private const val MENU_HIDE = 8
+        private const val MENU_LIBRARY = 9
     }
 
     private lateinit var workflowList: RecyclerView
@@ -91,6 +98,10 @@ class MainActivity : AppCompatActivity() {
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Reference LIGHT theme for this screen only (local night
+        // mode, set before super.onCreate, like the workflow screens);
+        // Home stays light even when the app runs AMOLED dark.
+        delegate.localNightMode = AppCompatDelegate.MODE_NIGHT_NO
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
@@ -153,6 +164,15 @@ class MainActivity : AppCompatActivity() {
                 startActivity(intent)
             }
 
+            override fun onData(workflow: Workflow) {
+                // Data… dialog lives in the editor: open the editor
+                // with the dialog requested on launch.
+                val intent = Intent(this@MainActivity, TaskEditorActivity::class.java)
+                intent.putExtra("workflow_id", workflow.id)
+                intent.putExtra("open_data", true)
+                startActivity(intent)
+            }
+
             override fun onShare(workflow: Workflow) {
                 shareWorkflow(workflow)
             }
@@ -197,11 +217,14 @@ class MainActivity : AppCompatActivity() {
         btnMenu.setOnClickListener { view ->
             val popup = PopupMenu(this, view)
             popup.menu.add(0, MENU_SORT, 0, R.string.menu_sort)
-            popup.menu.add(0, MENU_HISTORY, 1, R.string.menu_history)
+            popup.menu.add(0, MENU_HISTORY, 1, R.string.home_menu_task_history)
             popup.menu.add(0, MENU_SETTINGS, 2, R.string.menu_settings)
-            popup.menu.add(0, MENU_TRASH, 3, R.string.menu_trash)
-            popup.menu.add(0, MENU_EXPORT, 4, R.string.menu_export)
-            popup.menu.add(0, MENU_IMPORT, 5, R.string.menu_import)
+            popup.menu.add(0, MENU_TRASH, 3, R.string.home_menu_recycle_bin)
+            popup.menu.add(0, MENU_TRIGGERS, 4, R.string.nav_triggers)
+            popup.menu.add(0, MENU_HIDE, 5, R.string.nav_hide)
+            popup.menu.add(0, MENU_LIBRARY, 6, R.string.nav_library)
+            popup.menu.add(0, MENU_EXPORT, 7, R.string.menu_export)
+            popup.menu.add(0, MENU_IMPORT, 8, R.string.menu_import)
             popup.setOnMenuItemClickListener { item ->
                 when (item.itemId) {
                     MENU_SORT -> {
@@ -220,6 +243,18 @@ class MainActivity : AppCompatActivity() {
                     }
                     MENU_TRASH -> {
                         startActivity(Intent(this, TrashActivity::class.java))
+                        true
+                    }
+                    MENU_TRIGGERS -> {
+                        startActivity(Intent(this, TriggersActivity::class.java))
+                        true
+                    }
+                    MENU_HIDE -> {
+                        startActivity(Intent(this, HideActivity::class.java))
+                        true
+                    }
+                    MENU_LIBRARY -> {
+                        startActivity(Intent(this, LibraryActivity::class.java))
                         true
                     }
                     MENU_EXPORT -> {
@@ -248,23 +283,13 @@ class MainActivity : AppCompatActivity() {
 
         btnClose.setOnClickListener { collapseToFloatingBar() }
 
-        // Base-v2 bottom navigation: open the section screens.
-        // Home is this screen, so its tab does nothing.
-        // Nothing else on this screen changed: the top 3-dot menu,
-        // search, cards, CREATE TASK, and CLOSE all work as before.
-        findViewById<View>(R.id.nav_home).setOnClickListener { /* Already home. */ }
-        findViewById<View>(R.id.nav_triggers).setOnClickListener {
-            startActivity(Intent(this, TriggersActivity::class.java))
-        }
-        findViewById<View>(R.id.nav_hide).setOnClickListener {
-            startActivity(Intent(this, HideActivity::class.java))
-        }
-        findViewById<View>(R.id.nav_library).setOnClickListener {
-            startActivity(Intent(this, LibraryActivity::class.java))
-        }
-        findViewById<View>(R.id.nav_settings).setOnClickListener {
-            startActivity(Intent(this, SettingsActivity::class.java))
-        }
+        // No bottom navigation on Home any more (reference style):
+        // Triggers / Hide / Library / Settings are reached from the
+        // 3-dot menu above, with the same activity intents. The
+        // nav_* view ids no longer exist in activity_main.xml, so
+        // no code here may reference them (a lookup would crash).
+        // Nothing else on this screen changed: search, cards,
+        // CREATE TASK, and CLOSE all work as before.
 
         // Home-screen shortcut launch (item 2): a pinned shortcut
         // returns here with the workflow id; run it, same as Play.

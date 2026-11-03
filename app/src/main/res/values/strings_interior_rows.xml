@@ -45,8 +45,13 @@
     <string name="step_preview_variable">Variable: %1$s</string>
     <string name="step_preview_wait_random">Random wait: %1$d to %2$dms</string>
 
-    <!-- Editor header: rename pencil + help icon. -->
+    <!-- Editor header: rename pencil + help icon. The pencil opens a
+         rename dialog (the duplicate name field below the header is
+         gone, so the dialog is the only rename path). -->
     <string name="editor_rename_desc">Rename workflow</string>
+    <string name="editor_rename_title">Rename workflow</string>
+    <!-- Empty state, shown only when the workflow has no steps. -->
+    <string name="editor_empty_no_content">No content</string>
     <string name="editor_help_desc">Editor help</string>
     <string name="editor_help_title">Task editor help</string>
     <string name="editor_help_text">Add steps with ADD, reorder by dragging the handle on a step, tap a step to edit it, and tap the eye icon to preview it. SAVE keeps your changes and CANCEL discards them. Each step can have a wait after it: tap the Wait line below a step to change it.</string>
@@ -58,4 +63,5 @@
     <string name="card_menu_share_task">Share task</string>
     <string name="card_menu_shortcut_item">shortcut</string>
     <string name="card_menu_delete_item">delete</string>
+    <string name="card_menu_data">Data…</string>
 </resources>

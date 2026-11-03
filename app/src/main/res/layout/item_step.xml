@@ -5,7 +5,9 @@
      First line: number, gesture icon, title, real duration (hidden when
      the step has none), edit pencil, eye preview, always-shown count
      badge, drag handle. Second row: copy, swap, delete, play, menu.
-     Recognition rows add green success / red failure pills on the card.
+     Recognition rows add outlined green success / red failure
+     dropdown pills on the card (the dropdown arrow is part of the
+     pill text, set in StepAdapter).
      The Wait line sits BELOW the card, not inside it. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -77,7 +79,8 @@
                     android:layout_height="40dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="@string/row_edit_desc"
-                    android:src="@android:drawable/ic_menu_edit"
+                    android:padding="8dp"
+                    android:src="@drawable/ic_ref_edit"
                     android:tint="@color/ref_title" />
 
                 <ImageButton
@@ -86,7 +89,8 @@
                     android:layout_height="40dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="@string/row_preview_desc"
-                    android:src="@android:drawable/ic_menu_view"
+                    android:padding="8dp"
+                    android:src="@drawable/ic_ref_eye"
                     android:tint="@color/ref_title" />
 
                 <!-- Count badge: always shown, default 1. -->
@@ -108,7 +112,9 @@
                     android:layout_height="40dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Drag to reorder"
-                    android:src="@android:drawable/ic_menu_sort_by_size" />
+                    android:padding="8dp"
+                    android:src="@drawable/ic_ref_drag"
+                    android:tint="@color/ref_title" />
             </LinearLayout>
 
             <!-- Second icon row -->
@@ -125,7 +131,9 @@
                     android:layout_height="40dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Duplicate step"
-                    android:src="@drawable/ic_copy" />
+                    android:padding="8dp"
+                    android:src="@drawable/ic_ref_copy"
+                    android:tint="@color/ref_title" />
 
                 <ImageButton
                     android:id="@+id/btn_swap"
@@ -133,7 +141,8 @@
                     android:layout_height="40dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="@string/row_swap_desc"
-                    android:src="@android:drawable/ic_menu_rotate"
+                    android:padding="8dp"
+                    android:src="@drawable/ic_ref_swap"
                     android:tint="@color/ref_title" />
 
                 <ImageButton
@@ -142,7 +151,8 @@
                     android:layout_height="40dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Delete step"
-                    android:src="@android:drawable/ic_menu_delete"
+                    android:padding="8dp"
+                    android:src="@drawable/ic_ref_delete"
                     android:tint="@color/ref_red" />
 
                 <ImageButton
@@ -151,7 +161,8 @@
                     android:layout_height="40dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Run just this step"
-                    android:src="@android:drawable/ic_media_play"
+                    android:padding="8dp"
+                    android:src="@drawable/ic_ref_play"
                     android:tint="@color/ref_green" />
 
                 <View
@@ -167,13 +178,15 @@
                     android:layout_height="40dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:contentDescription="Step actions"
+                    android:padding="8dp"
                     android:src="@drawable/ic_more"
                     android:tint="@color/ref_title" />
             </LinearLayout>
 
-            <!-- Recognition branch pills, on the row (GONE otherwise).
-                 Tapping a pill opens the step editor, which holds that
-                 section's success / failure picker. -->
+            <!-- Recognition branch pills, outlined dropdown pills on
+                 the row (GONE otherwise). Tapping a pill opens the step
+                 editor, which holds that section's success / failure
+                 picker. -->
             <LinearLayout
                 android:id="@+id/branch_pills"
                 android:layout_width="match_parent"
@@ -187,7 +200,7 @@
                     android:id="@+id/pill_success"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:background="@drawable/pill_background"
+                    android:background="@drawable/ic_ref_pill_green"
                     android:clickable="true"
                     android:focusable="true"
                     android:paddingHorizontal="10dp"
@@ -201,7 +214,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginStart="8dp"
-                    android:background="@drawable/pill_background"
+                    android:background="@drawable/ic_ref_pill_red"
                     android:clickable="true"
                     android:focusable="true"
                     android:paddingHorizontal="10dp"
@@ -250,7 +263,8 @@
             android:layout_marginStart="4dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/row_wait_edit_desc"
-            android:src="@android:drawable/ic_menu_edit"
+            android:padding="4dp"
+            android:src="@drawable/ic_ref_edit"
             android:tint="@color/ref_summary" />
     </LinearLayout>
 </LinearLayout>

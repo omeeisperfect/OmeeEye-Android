@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Thin drag handle: two columns of small dots (own drawing). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path android:fillColor="#000000" android:pathData="M9,6 a1.5,1.5 0 1,0 0.01,0" />
+    <path android:fillColor="#000000" android:pathData="M15,6 a1.5,1.5 0 1,0 0.01,0" />
+    <path android:fillColor="#000000" android:pathData="M9,12 a1.5,1.5 0 1,0 0.01,0" />
+    <path android:fillColor="#000000" android:pathData="M15,12 a1.5,1.5 0 1,0 0.01,0" />
+    <path android:fillColor="#000000" android:pathData="M9,18 a1.5,1.5 0 1,0 0.01,0" />
+    <path android:fillColor="#000000" android:pathData="M15,18 a1.5,1.5 0 1,0 0.01,0" />
+</vector>

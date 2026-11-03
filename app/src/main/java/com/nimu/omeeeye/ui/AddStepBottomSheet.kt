@@ -32,6 +32,17 @@ class AddStepBottomSheet : BottomSheetDialogFragment() {
         fun onStepChosen(type: StepType)
     }
 
+    /**
+     * Forces a LIGHT dialog theme for the sheet, whatever the app's
+     * DayNight/AMOLED setting is. BottomSheetDialogFragment passes
+     * getTheme() to the BottomSheetDialog constructor, so this light
+     * Material BottomSheetDialog theme — not the activity's dark
+     * theme — decides the sheet surround; the sheet content itself
+     * is already white (@color/ref_card).
+     */
+    override fun getTheme(): Int =
+        com.google.android.material.R.style.Theme_MaterialComponents_Light_BottomSheetDialog
+
     var onStepChosenListener: OnStepChosenListener? = null
     var onRecordRequested: (() -> Unit)? = null
     /** Replace mode hides the Record row: recording produces several

@@ -60,16 +60,17 @@
     <string name="rec_click_first">Perform a click first</string>
     <string name="rec_add_action">Add action</string>
     <string name="rec_no_actions">No actions yet</string>
-    <string name="rec_jump_target">Choose jump target</string>
     <string name="rec_jump_target_dialog">Jump to step</string>
-    <string name="rec_jump_none">No jump target chosen</string>
-    <string name="rec_jump_note">Execution continues from that step.</string>
+    <string name="rec_jump_to_label">Jump to</string>
+    <string name="rec_jump_note">Continue from the specified action</string>
     <string name="rec_jump_no_steps">Add another step to the workflow first</string>
 
     <!-- Retry -->
     <string name="rec_retry_actions_label">Actions before retrying</string>
-    <string name="rec_retry_count_label">Retries</string>
-    <string name="rec_retry_delay_label">Delay between retries</string>
+    <string name="rec_retry_count_label">number of retries</string>
+    <string name="rec_retry_delay_label">Delay time</string>
+    <string name="rec_milliseconds">milliseconds</string>
+    <string name="rec_number_invalid">Enter a number between %1$d and %2$d</string>
 
     <!-- Sub-action add dialog -->
     <string name="rec_add_action_title">Add action</string>

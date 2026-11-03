@@ -1,6 +1,5 @@
 package com.nimu.omeeeye.ui
 
-import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -8,7 +7,6 @@ import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
 import android.view.View
-import android.view.inputmethod.InputMethodManager
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
@@ -83,7 +81,12 @@ class TaskEditorActivity : AppCompatActivity() {
         )
     }
 
-    private lateinit var nameEditText: EditText
+    // Workflow name, edited only through the header pencil's rename
+    // dialog (there is no name field in the layout any more). The
+    // header title mirrors this value; blank shows "New workflow".
+    private var workflowName: String = ""
+    private lateinit var editorTitleView: TextView
+    private lateinit var emptyStateView: View
     private lateinit var stepListView: RecyclerView
     private lateinit var adapter: StepAdapter
     private var touchHelper: ItemTouchHelper? = null
@@ -374,23 +377,10 @@ class TaskEditorActivity : AppCompatActivity() {
             dataRepeat = it.dataRepeat
         }
 
-        val titleView = findViewById<TextView>(R.id.editor_title)
-        titleView.text = existingWorkflow?.name?.ifBlank { null }
-            ?: getString(R.string.editor_new_title)
-        title = titleView.text
-
-        nameEditText = findViewById(R.id.workflow_name)
-        nameEditText.setText(existingWorkflow?.name ?: "")
-        // Header name mirrors the name field while typing, so the
-        // header always shows the workflow's current name.
-        nameEditText.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            override fun afterTextChanged(s: Editable?) {
-                titleView.text = s?.toString()?.ifBlank { null }
-                    ?: getString(R.string.editor_new_title)
-            }
-        })
+        editorTitleView = findViewById(R.id.editor_title)
+        workflowName = existingWorkflow?.name ?: ""
+        refreshEditorTitle()
+        emptyStateView = findViewById(R.id.empty_state)
         stepListView = findViewById(R.id.step_list)
 
         adapter = StepAdapter(steps, object : StepAdapter.Listener {
@@ -436,17 +426,18 @@ class TaskEditorActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btn_add).setOnClickListener { openAddStepSheet() }
         findViewById<Button>(R.id.btn_cancel).setOnClickListener { finish() }
         findViewById<Button>(R.id.btn_save).setOnClickListener { saveAndFinish() }
-        findViewById<ImageButton>(R.id.btn_editor_menu).setOnClickListener {
-            showEditorMenu(it)
-        }
-        // Header pencil: renames via the existing name field — focus it,
-        // show the keyboard and select the current name for retyping.
+        // Header pencil: the only rename path — a small rename dialog
+        // (same AlertDialog + EditText pattern as the other dialogs
+        // here). The duplicate name field below the header is gone.
         findViewById<ImageButton>(R.id.btn_name_edit).setOnClickListener {
-            nameEditText.requestFocus()
-            nameEditText.selectAll()
-            val imm = getSystemService(Context.INPUT_METHOD_SERVICE)
-                as? InputMethodManager
-            imm?.showSoftInput(nameEditText, InputMethodManager.SHOW_IMPLICIT)
+            showRenameDialog()
+        }
+        updateEmptyState()
+        // Opened from the Home card menu "Data…": show the Data
+        // dialog once the editor is laid out (workflow fields are
+        // already loaded above). The dialog itself is unchanged.
+        if (intent.getBooleanExtra("open_data", false)) {
+            stepListView.post { showDataDialog() }
         }
         // Header "?": short help dialog describing the editor.
         findViewById<TextView>(R.id.btn_editor_help).setOnClickListener {
@@ -480,6 +471,53 @@ class TaskEditorActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
+    /** Header title mirrors the workflow name; blank shows "New workflow". */
+    private fun refreshEditorTitle() {
+        editorTitleView.text = workflowName.ifBlank { null }
+            ?: getString(R.string.editor_new_title)
+        title = editorTitleView.text
+    }
+
+    /**
+     * Empty state: "No content" takes the list's space exactly when
+     * the workflow has no steps; otherwise the list shows. Called
+     * after every step-count change (insert, copy, delete) and once
+     * at startup, so the view can never disagree with the list.
+     */
+    private fun updateEmptyState() {
+        val empty = steps.isEmpty()
+        emptyStateView.visibility = if (empty) View.VISIBLE else View.GONE
+        stepListView.visibility = if (empty) View.GONE else View.VISIBLE
+    }
+
+    /**
+     * Rename dialog (header pencil, the only rename path). OK stores
+     * the typed name and refreshes the header; Cancel changes nothing.
+     * A name is text, not a location, so typing it here is fine.
+     */
+    private fun showRenameDialog() {
+        val pad = (16 * resources.displayMetrics.density).toInt()
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(pad, pad, pad, pad)
+        }
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT
+            setText(workflowName)
+            hint = getString(R.string.workflow_name_hint)
+        }
+        layout.addView(input)
+        AlertDialog.Builder(this)
+            .setTitle(R.string.editor_rename_title)
+            .setView(layout)
+            .setPositiveButton(R.string.ok) { _, _ ->
+                workflowName = input.text.toString()
+                refreshEditorTitle()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
     /** Header "?" help: a short read-only description of the editor. */
     private fun showEditorHelpDialog() {
         AlertDialog.Builder(this)
@@ -495,7 +533,7 @@ class TaskEditorActivity : AppCompatActivity() {
         val existing = existingWorkflow
         return Workflow(
             id = workflowId,
-            name = nameEditText.text.toString(),
+            name = workflowName,
             cycleIntervalMs = existing?.cycleIntervalMs ?: 500,
             cycles = existing?.cycles ?: 1,
             steps = steps.toList(),
@@ -530,6 +568,7 @@ class TaskEditorActivity : AppCompatActivity() {
         val index = (position - 1).coerceIn(0, steps.size)
         steps.add(index, step)
         adapter.notifyItemInserted(index)
+        updateEmptyState()
     }
 
     private fun showInsertPositionDialog(step: Step) {
@@ -561,6 +600,7 @@ class TaskEditorActivity : AppCompatActivity() {
                 val index = (picker.value - 1).coerceIn(0, steps.size)
                 steps.addAll(index, added)
                 adapter.notifyItemRangeInserted(index, added.size)
+                updateEmptyState()
             }
             .setNegativeButton(R.string.cancel) { _, _ ->
                 // Cancel keeps the recording out of the workflow: the
@@ -657,6 +697,7 @@ class TaskEditorActivity : AppCompatActivity() {
         if (position !in steps.indices) return
         steps[position] = step
         adapter.notifyItemChanged(position)
+        updateEmptyState()
     }
 
     // ---------- Step row actions (shared by the row quick icons and
@@ -666,6 +707,7 @@ class TaskEditorActivity : AppCompatActivity() {
         val step = steps.getOrNull(position) ?: return
         steps.add(position + 1, step.copy(id = WorkflowStore.newId()))
         adapter.notifyItemInserted(position + 1)
+        updateEmptyState()
     }
 
     private fun deleteStep(position: Int) {
@@ -675,6 +717,7 @@ class TaskEditorActivity : AppCompatActivity() {
         if (position < steps.size) {
             adapter.notifyItemRangeChanged(position, steps.size - position)
         }
+        updateEmptyState()
     }
 
     private fun playStep(position: Int) {
@@ -1390,17 +1433,6 @@ class TaskEditorActivity : AppCompatActivity() {
             }
             .setNegativeButton(R.string.cancel, null)
             .show()
-    }
-
-    /** Top 3-dot menu: workflow-level actions (currently just Data…). */
-    private fun showEditorMenu(anchor: View) {
-        val popup = PopupMenu(this, anchor)
-        popup.menu.add(getString(R.string.editor_data))
-        popup.setOnMenuItemClickListener {
-            showDataDialog()
-            true
-        }
-        popup.show()
     }
 
     /**

@@ -13,7 +13,7 @@
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <!-- Workflow name (mirrors the name field below). -->
+        <!-- Workflow name, renamed via the pencil dialog. -->
         <TextView
             android:id="@+id/editor_title"
             android:layout_width="0dp"
@@ -23,14 +23,16 @@
             android:textSize="22sp"
             android:textStyle="bold" />
 
-        <!-- Pencil: focuses the name field so the workflow can be renamed. -->
+        <!-- Pencil: opens the rename dialog (the old duplicate name
+             field below the header is gone, so this is the rename path). -->
         <ImageButton
             android:id="@+id/btn_name_edit"
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/editor_rename_desc"
-            android:src="@android:drawable/ic_menu_edit"
+            android:padding="12dp"
+            android:src="@drawable/ic_ref_edit"
             android:tint="@color/ref_title" />
 
         <!-- "?": short help dialog describing the editor. -->
@@ -47,29 +49,7 @@
             android:textColor="@color/ref_green"
             android:textSize="22sp"
             android:textStyle="bold" />
-
-        <!-- Top 3-dot menu (workflow-level actions such as Data…). -->
-        <ImageButton
-            android:id="@+id/btn_editor_menu"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="@string/editor_data"
-            android:src="@android:drawable/ic_menu_more"
-            android:tint="@color/ref_title" />
     </LinearLayout>
-
-    <!-- Workflow NAME (a name, not a location, so typing it is fine). -->
-    <EditText
-        android:id="@+id/workflow_name"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:hint="@string/workflow_name_hint"
-        android:inputType="text"
-        android:singleLine="true"
-        android:textColor="@color/ref_title"
-        android:textColorHint="@color/ref_summary" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/step_list"
@@ -77,6 +57,19 @@
         android:layout_height="0dp"
         android:layout_marginTop="12dp"
         android:layout_weight="1" />
+
+    <!-- Empty state: shown only when the step list is empty (the
+         activity toggles this view against the list). -->
+    <TextView
+        android:id="@+id/empty_state"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:text="@string/editor_empty_no_content"
+        android:textColor="@color/ref_summary"
+        android:textSize="16sp"
+        android:visibility="gone" />
 
     <!-- Bottom bar, reference order. Behaviour is unchanged: ADD opens
          the add-step sheet, CANCEL discards, SAVE persists and finishes.

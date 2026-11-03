@@ -294,7 +294,8 @@ class ButtonCaptureService : Service() {
 
     private fun showOverlay() {
         val density = resources.displayMetrics.density
-        val pad = (12 * density).toInt()
+        // Pill padding 8dp horizontal / 4dp vertical (pad / pad / 2).
+        val pad = (8 * density).toInt()
 
         drawView = CaptureDrawView(this)
 
@@ -349,15 +350,6 @@ class ButtonCaptureService : Service() {
                 FrameLayout.LayoutParams.WRAP_CONTENT
             ).apply { gravity = Gravity.TOP or Gravity.START }
         }
-        bar.addView(
-            TextView(this).apply {
-                text = getString(R.string.button_capture_hint)
-                setTextColor(ContextCompat.getColor(context, R.color.overlay_bar_text))
-                textSize = 15f
-                setBackgroundColor(ContextCompat.getColor(context, R.color.overlay_bar))
-                setPadding(pad, pad / 2, pad, pad / 2)
-            }
-        )
         bar.addView(
             pill(getString(R.string.cancel), R.drawable.pill_solid_red, pad).apply {
                 setOnClickListener { finishWithoutCapture() }

@@ -6,11 +6,11 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginBottom="12dp"
-    app:cardBackgroundColor="@color/card_background"
-    app:cardCornerRadius="16dp"
-    app:cardElevation="6dp"
-    app:strokeColor="@color/card_border"
+    android:layout_marginBottom="8dp"
+    app:cardBackgroundColor="@color/ref_card"
+    app:cardCornerRadius="12dp"
+    app:cardElevation="1dp"
+    app:strokeColor="@color/ref_card_stroke"
     app:strokeWidth="1dp">
 
     <LinearLayout
@@ -18,7 +18,7 @@
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:padding="16dp">
+        android:padding="12dp">
 
         <LinearLayout
             android:layout_width="0dp"
@@ -30,8 +30,8 @@
                 android:id="@+id/workflow_name"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textColor="@color/text_primary"
-                android:textSize="17sp"
+                android:textColor="@color/ref_title"
+                android:textSize="16sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -39,7 +39,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
-                android:textColor="@color/text_secondary"
+                android:textColor="@color/ref_summary"
                 android:textSize="14sp" />
 
             <TextView
@@ -47,22 +47,24 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="2dp"
-                android:textColor="@color/text_secondary"
+                android:textColor="@color/ref_summary"
                 android:textSize="14sp" />
         </LinearLayout>
 
-        <!-- Green circular play button (mockup). Tint follows the theme:
-             white on light emerald, black on AMOLED bright emerald. -->
+        <!-- Plain play affordance (reference style): smaller than the
+             old 48dp green circle, no filled background — just the
+             play triangle in reference green. Id and click handling
+             are unchanged, so Play still runs the workflow. -->
         <ImageButton
             android:id="@+id/btn_play"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="@drawable/circle_accent"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="Play"
-            android:padding="12dp"
+            android:padding="6dp"
             android:scaleType="centerInside"
             android:src="@drawable/ic_play"
-            android:tint="@color/accent_text" />
+            android:tint="@color/ref_green" />
 
         <ImageButton
             android:id="@+id/btn_card_menu"

@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/background"
+    android:background="@color/ref_page_bg"
     android:orientation="vertical"
     android:padding="16dp">
 
@@ -18,8 +19,8 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="@string/home_title"
-            android:textColor="@color/text_primary"
+            android:text="@string/home_title_ref"
+            android:textColor="@color/ref_title"
             android:textSize="22sp"
             android:textStyle="bold" />
 
@@ -66,207 +67,43 @@
         android:layout_weight="1"
         android:gravity="center"
         android:text="@string/no_workflows"
-        android:textColor="@color/text_secondary"
+        android:textColor="@color/ref_summary"
         android:textSize="16sp"
         android:visibility="gone" />
 
-    <!-- Bottom actions -->
-    <Button
-        android:id="@+id/btn_create_task"
-        style="@style/OutlineButton"
-        android:drawableStart="@drawable/ic_add"
-        android:drawablePadding="8dp"
-        android:drawableTint="@color/text_primary"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:text="@string/create_task" />
-
-    <Button
-        android:id="@+id/btn_close"
-        style="@style/FilledButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="@string/close" />
-
-    <!-- Base-v2 bottom navigation: the 5 app sections.
-         Home is selected here. Tapping a tab opens that section;
-         the top 3-dot menu is unchanged. -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:layout_marginTop="12dp"
-        android:background="@color/divider" />
-
+    <!-- Bottom actions, side by side (reference style): CREATE TASK
+         outline button + CLOSE green pill in one row. No bottom nav:
+         Triggers / Hide / Library / Settings now live in the 3-dot
+         menu (see MainActivity). CLOSE behaviour is unchanged. -->
     <LinearLayout
-        android:id="@+id/bottom_nav"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/card_background"
-        android:elevation="8dp"
+        android:layout_marginTop="12dp"
+        android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <LinearLayout
-            android:id="@+id/nav_home"
+        <Button
+            android:id="@+id/btn_create_task"
+            style="@style/OutlineButton"
+            android:drawableStart="@drawable/ic_add"
+            android:drawablePadding="8dp"
+            android:drawableTint="@color/text_primary"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_marginEnd="6dp"
             android:layout_weight="1"
-            android:background="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center"
-            android:orientation="vertical"
-            android:paddingTop="10dp"
-            android:paddingBottom="10dp">
+            android:text="@string/create_task" />
 
-            <ImageView
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:src="@drawable/ic_nav_home"
-                android:tint="@color/accent" />
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/nav_home"
-                android:textColor="@color/accent"
-                android:textSize="12sp"
-                android:textStyle="bold" />
-            <View
-                android:layout_width="5dp"
-                android:layout_height="5dp"
-                android:layout_marginTop="3dp"
-                android:background="@drawable/circle_dot"
-                android:visibility="visible" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/nav_triggers"
+        <Button
+            android:id="@+id/btn_close"
+            style="@style/FilledButton"
+            android:backgroundTint="@color/ref_green"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
             android:layout_weight="1"
-            android:background="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center"
-            android:orientation="vertical"
-            android:paddingTop="10dp"
-            android:paddingBottom="10dp">
-
-            <ImageView
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:src="@drawable/ic_nav_triggers"
-                android:tint="@color/text_secondary" />
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/nav_triggers"
-                android:textColor="@color/text_secondary"
-                android:textSize="12sp" />
-            <View
-                android:layout_width="5dp"
-                android:layout_height="5dp"
-                android:layout_marginTop="3dp"
-                android:background="@drawable/circle_dot"
-                android:visibility="gone" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/nav_hide"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:background="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center"
-            android:orientation="vertical"
-            android:paddingTop="10dp"
-            android:paddingBottom="10dp">
-
-            <ImageView
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:src="@drawable/ic_nav_hide"
-                android:tint="@color/text_secondary" />
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/nav_hide"
-                android:textColor="@color/text_secondary"
-                android:textSize="12sp" />
-            <View
-                android:layout_width="5dp"
-                android:layout_height="5dp"
-                android:layout_marginTop="3dp"
-                android:background="@drawable/circle_dot"
-                android:visibility="gone" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/nav_library"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:background="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center"
-            android:orientation="vertical"
-            android:paddingTop="10dp"
-            android:paddingBottom="10dp">
-
-            <ImageView
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:src="@drawable/ic_nav_library"
-                android:tint="@color/text_secondary" />
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/nav_library"
-                android:textColor="@color/text_secondary"
-                android:textSize="12sp" />
-            <View
-                android:layout_width="5dp"
-                android:layout_height="5dp"
-                android:layout_marginTop="3dp"
-                android:background="@drawable/circle_dot"
-                android:visibility="gone" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:id="@+id/nav_settings"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:background="?attr/selectableItemBackground"
-            android:clickable="true"
-            android:focusable="true"
-            android:gravity="center"
-            android:orientation="vertical"
-            android:paddingTop="10dp"
-            android:paddingBottom="10dp">
-
-            <ImageView
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:src="@drawable/ic_nav_settings"
-                android:tint="@color/text_secondary" />
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/nav_settings"
-                android:textColor="@color/text_secondary"
-                android:textSize="12sp" />
-            <View
-                android:layout_width="5dp"
-                android:layout_height="5dp"
-                android:layout_marginTop="3dp"
-                android:background="@drawable/circle_dot"
-                android:visibility="gone" />
-        </LinearLayout>
+            android:text="@string/close"
+            app:cornerRadius="24dp" />
     </LinearLayout>
 
 </LinearLayout>

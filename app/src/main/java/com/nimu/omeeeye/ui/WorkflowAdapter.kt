@@ -35,6 +35,11 @@ class WorkflowAdapter(private val listener: Listener) :
         fun onShortcut(workflow: Workflow)
         fun onTimed(workflow: Workflow)
         fun onGesturePath(workflow: Workflow)
+        // Restores the Data… dialog entry point: the editor header
+        // 3-dot menu was removed for the reference look, so Data…
+        // now lives on the Home card menu instead (it opens the
+        // editor with the Data dialog shown).
+        fun onData(workflow: Workflow)
     }
 
     companion object {
@@ -47,6 +52,7 @@ class WorkflowAdapter(private val listener: Listener) :
         private const val MENU_SHORTCUT = 7
         private const val MENU_TIMED = 8
         private const val MENU_GESTURE_PATH = 9
+        private const val MENU_DATA = 10
     }
 
     private var items: List<Workflow> = emptyList()
@@ -97,6 +103,7 @@ class WorkflowAdapter(private val listener: Listener) :
             popup.menu.add(0, MENU_SHARE, 4, R.string.card_menu_share_task)
             popup.menu.add(0, MENU_SHORTCUT, 5, R.string.card_menu_shortcut_item)
             popup.menu.add(0, MENU_FLOATING_BAR, 6, R.string.card_menu_floating_bar)
+            popup.menu.add(0, MENU_DATA, 7, R.string.card_menu_data)
             val deleteTitle = SpannableString(
                 view.context.getString(R.string.card_menu_delete_item)
             ).apply {
@@ -107,7 +114,7 @@ class WorkflowAdapter(private val listener: Listener) :
                     0, length, SpannableString.SPAN_EXCLUSIVE_EXCLUSIVE
                 )
             }
-            popup.menu.add(0, MENU_DELETE, 7, deleteTitle)
+            popup.menu.add(0, MENU_DELETE, 8, deleteTitle)
             popup.setOnMenuItemClickListener { item ->
                 when (item.itemId) {
                     MENU_GESTURE_PATH -> {
@@ -136,6 +143,10 @@ class WorkflowAdapter(private val listener: Listener) :
                     }
                     MENU_FLOATING_BAR -> {
                         listener.onFloatingBar(workflow)
+                        true
+                    }
+                    MENU_DATA -> {
+                        listener.onData(workflow)
                         true
                     }
                     MENU_DELETE -> {

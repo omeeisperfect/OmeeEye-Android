@@ -14,7 +14,6 @@ import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.NumberPicker
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.TextView
@@ -149,6 +148,13 @@ class RecognitionEditActivity : AppCompatActivity() {
     private val anchorPicked: Boolean
         get() = anchorX >= 0 && anchorY >= 0
     private var stepCycles: Int = 1
+    // Inline numeric values (the layout NumberPickers are gone):
+    // same ranges the pickers had — click 1..10, tolerance 0..100,
+    // retries 0..10, retry delay 0..30000 ms, cycles 1..99.
+    private var clickCountVal: Int = 1
+    private var toleranceVal: Int = 0
+    private var retryCountVal: Int = 0
+    private var retryDelayMsVal: Long = 0L
     private var successMode: SuccessMode = SuccessMode.CLICK
     private var jumpTarget: Int = -1
     private var afterRetryMode: AfterRetryMode = AfterRetryMode.IGNORE
@@ -163,12 +169,11 @@ class RecognitionEditActivity : AppCompatActivity() {
             regionRight > regionLeft && regionBottom > regionTop
 
     // ---- Views ----
-    private lateinit var btnJudgment: Button
+    // Judgment / area pills are compact TextViews, not Buttons.
+    private lateinit var btnJudgment: TextView
     private lateinit var judgmentLabel: TextView
     private lateinit var btnJudgmentHelp: View
-    private lateinit var btnArea: Button
-    private lateinit var btnPickRegion: Button
-    private lateinit var textRegionStatus: TextView
+    private lateinit var btnArea: TextView
     // Button text / ID / description are value TextViews edited
     // through their pencil buttons (reference top card), not inline
     // EditTexts. Every read/write site uses .text / .setText, which
@@ -178,12 +183,9 @@ class RecognitionEditActivity : AppCompatActivity() {
     private lateinit var editButtonDesc: TextView
     private lateinit var imgTemplatePreview: ImageView
     private lateinit var textTemplateStatus: TextView
-    private lateinit var textImageRegionStatus: TextView
     private lateinit var viewColorSwatch: View
     private lateinit var textColorStatus: TextView
-    private lateinit var pickerTolerance: NumberPicker
     private lateinit var textToleranceValue: TextView
-    private lateinit var textOcrRegionStatus: TextView
     private lateinit var editOcrMatch: EditText
     private lateinit var editOcrVariable: EditText
     // One RadioButton per mode card (no RadioGroup: radios live in
@@ -192,21 +194,19 @@ class RecognitionEditActivity : AppCompatActivity() {
     private lateinit var radioSuccessClick: RadioButton
     private lateinit var radioSuccessCustom: RadioButton
     private lateinit var radioSuccessJump: RadioButton
-    private lateinit var successClickGroup: View
-    private lateinit var pickerClickCount: NumberPicker
-    private lateinit var textClickCountValue: TextView
+    // Click count is the inline "xN" badge next to the pill; tapping
+    // it opens the validated edit dialog (no picker on the page).
     private lateinit var textClickCountBadge: TextView
     private lateinit var successActionsGroup: View
     private lateinit var switchClickFirst: CheckBox
     private lateinit var listSuccessActions: LinearLayout
     private lateinit var textSuccessEmpty: TextView
     private lateinit var successJumpGroup: View
-    private lateinit var textSuccessJumpStatus: TextView
+    // Jump dropdown pills (dashed outline); empty text = unset.
+    private lateinit var textSuccessJumpTarget: TextView
     private lateinit var listRetryActions: LinearLayout
     private lateinit var textRetryEmpty: TextView
-    private lateinit var pickerRetryCount: NumberPicker
     private lateinit var textRetryCountValue: TextView
-    private lateinit var pickerRetryDelay: NumberPicker
     private lateinit var textRetryDelayValue: TextView
     private lateinit var radioAfterIgnore: RadioButton
     private lateinit var radioAfterCustom: RadioButton
@@ -215,14 +215,13 @@ class RecognitionEditActivity : AppCompatActivity() {
     private lateinit var listAfterActions: LinearLayout
     private lateinit var textAfterEmpty: TextView
     private lateinit var afterJumpGroup: View
-    private lateinit var textAfterJumpStatus: TextView
+    private lateinit var textAfterJumpTarget: TextView
     private lateinit var checkBreakLoopSuccess: CheckBox
     private lateinit var checkBreakLoopFailure: CheckBox
     private lateinit var btnSave: Button
-    // Programmatic sections (no layout-file change): cycles picker
-    // inserted before the Save / Close row, anchor controls appended
-    // to the Color group.
-    private lateinit var pickerCycles: NumberPicker
+    private lateinit var textCyclesValue: TextView
+    // Programmatic sections: anchor controls appended to the Color
+    // group (the Cycles inline value lives in the layout file).
     private lateinit var btnPickAnchor: Button
     private lateinit var textAnchorStatus: TextView
     private var textButtonDetails: TextView? = null
@@ -439,7 +438,6 @@ class RecognitionEditActivity : AppCompatActivity() {
                             colorValue = obj.optInt("colorValue", 0)
                             colorPicked = true
                             refreshColorViews()
-                            refreshRegionStatuses()
                         }
                     }
                     else -> {
@@ -450,7 +448,6 @@ class RecognitionEditActivity : AppCompatActivity() {
                             areaMode = AreaMode.REGION
                             refreshAreaViews()
                             refreshButtonDetails()
-                            refreshRegionStatuses()
                         }
                     }
                 }
@@ -634,39 +631,29 @@ class RecognitionEditActivity : AppCompatActivity() {
         judgmentLabel = findViewById(R.id.rec_judgment_label)
         btnJudgmentHelp = findViewById(R.id.btn_judgment_help)
         btnArea = findViewById(R.id.btn_area)
-        btnPickRegion = findViewById(R.id.btn_pick_region)
-        textRegionStatus = findViewById(R.id.text_region_status)
         editButtonText = findViewById(R.id.edit_button_text)
         editButtonId = findViewById(R.id.edit_button_id)
         editButtonDesc = findViewById(R.id.edit_button_desc)
         imgTemplatePreview = findViewById(R.id.img_template_preview)
         textTemplateStatus = findViewById(R.id.text_template_status)
-        textImageRegionStatus = findViewById(R.id.text_image_region_status)
         viewColorSwatch = findViewById(R.id.view_color_swatch)
         textColorStatus = findViewById(R.id.text_color_status)
-        pickerTolerance = findViewById(R.id.picker_tolerance)
         textToleranceValue = findViewById(R.id.text_tolerance_value)
-        textOcrRegionStatus = findViewById(R.id.text_ocr_region_status)
         editOcrMatch = findViewById(R.id.edit_ocr_match)
         editOcrVariable = findViewById(R.id.edit_ocr_variable)
         radioSuccessClick = findViewById(R.id.radio_success_click)
         radioSuccessCustom = findViewById(R.id.radio_success_custom)
         radioSuccessJump = findViewById(R.id.radio_success_jump)
-        successClickGroup = findViewById(R.id.success_click_group)
-        pickerClickCount = findViewById(R.id.picker_click_count)
-        textClickCountValue = findViewById(R.id.text_click_count_value)
         textClickCountBadge = findViewById(R.id.text_click_count_badge)
         successActionsGroup = findViewById(R.id.success_actions_group)
         switchClickFirst = findViewById(R.id.switch_click_first)
         listSuccessActions = findViewById(R.id.list_success_actions)
         textSuccessEmpty = findViewById(R.id.text_success_empty)
         successJumpGroup = findViewById(R.id.success_jump_group)
-        textSuccessJumpStatus = findViewById(R.id.text_success_jump_status)
+        textSuccessJumpTarget = findViewById(R.id.btn_success_jump_target)
         listRetryActions = findViewById(R.id.list_retry_actions)
         textRetryEmpty = findViewById(R.id.text_retry_empty)
-        pickerRetryCount = findViewById(R.id.picker_retry_count)
         textRetryCountValue = findViewById(R.id.text_retry_count_value)
-        pickerRetryDelay = findViewById(R.id.picker_retry_delay)
         textRetryDelayValue = findViewById(R.id.text_retry_delay_value)
         radioAfterIgnore = findViewById(R.id.radio_after_ignore)
         radioAfterCustom = findViewById(R.id.radio_after_custom)
@@ -675,18 +662,18 @@ class RecognitionEditActivity : AppCompatActivity() {
         listAfterActions = findViewById(R.id.list_after_actions)
         textAfterEmpty = findViewById(R.id.text_after_empty)
         afterJumpGroup = findViewById(R.id.after_jump_group)
-        textAfterJumpStatus = findViewById(R.id.text_after_jump_status)
+        textAfterJumpTarget = findViewById(R.id.btn_after_jump_target)
         checkBreakLoopSuccess = findViewById(R.id.check_break_loop_success)
         checkBreakLoopFailure = findViewById(R.id.check_break_loop_failure)
         btnSave = findViewById(R.id.btn_rec_save)
-        pickerCycles = findViewById(R.id.picker_cycles)
+        textCyclesValue = findViewById(R.id.text_cycles_value)
     }
 
     /**
      * Programmatic UI: "Pick anchor point" + anchor status inside the
      * Color group, the Button detail summary + capture button, and
-     * the OCR test-read button + preview. The Cycles picker now lives
-     * in the layout file (before the Save / Close row, all four
+     * the OCR test-read button + preview. The Cycles inline value
+     * lives in the layout file (before the Save / Close row, all four
      * recognition types) and is bound in bindViews().
      */
     private fun addProgrammaticSections() {
@@ -996,7 +983,6 @@ class RecognitionEditActivity : AppCompatActivity() {
             refreshJudgmentButton()
             refreshAreaViews()
             refreshButtonDetails()
-            refreshRegionStatuses()
             refreshSaveEnabled()
         }
         fun restorePreCapture() {
@@ -1012,7 +998,6 @@ class RecognitionEditActivity : AppCompatActivity() {
             refreshJudgmentButton()
             refreshAreaViews()
             refreshButtonDetails()
-            refreshRegionStatuses()
             refreshSaveEnabled()
         }
         val scroll = android.widget.ScrollView(this)
@@ -1080,37 +1065,13 @@ class RecognitionEditActivity : AppCompatActivity() {
             originalStep.ocrVariable.ifBlank { "OCR_TEXT" }
         )
 
-        pickerCycles.minValue = 1
-        pickerCycles.maxValue = 99
-        pickerCycles.value = stepCycles.coerceIn(1, 99)
-
-        pickerClickCount.minValue = 1
-        pickerClickCount.maxValue = 10
-        pickerClickCount.value = originalStep.clickCount.coerceIn(1, 10)
-        pickerTolerance.minValue = 0
-        pickerTolerance.maxValue = 100
-        pickerTolerance.value = originalStep.colorTolerance.coerceIn(0, 100)
-        pickerRetryCount.minValue = 0
-        pickerRetryCount.maxValue = 10
-        pickerRetryCount.value = originalStep.retryCount.coerceIn(0, 10)
-        pickerRetryDelay.minValue = 0
-        pickerRetryDelay.maxValue = MAX_PICKER_100MS
-        pickerRetryDelay.value =
-            (originalStep.retryDelayMs / 100).toInt().coerceIn(0, MAX_PICKER_100MS)
-
-        pickerClickCount.setOnValueChangedListener { _, _, newVal ->
-            textClickCountValue.text = newVal.toString()
-            textClickCountBadge.text = "x$newVal"
-        }
-        pickerTolerance.setOnValueChangedListener { _, _, newVal ->
-            textToleranceValue.text = newVal.toString()
-        }
-        pickerRetryCount.setOnValueChangedListener { _, _, newVal ->
-            textRetryCountValue.text = newVal.toString()
-        }
-        pickerRetryDelay.setOnValueChangedListener { _, _, newVal ->
-            textRetryDelayValue.text = (newVal * 100).toString() + " ms"
-        }
+        // Inline values, same ranges the pickers had.
+        stepCycles = stepCycles.coerceIn(1, 99)
+        clickCountVal = originalStep.clickCount.coerceIn(1, 10)
+        toleranceVal = originalStep.colorTolerance.coerceIn(0, 100)
+        retryCountVal = originalStep.retryCount.coerceIn(0, 10)
+        retryDelayMsVal = originalStep.retryDelayMs.coerceIn(0L, 30000L)
+        refreshInlineValues()
 
         switchClickFirst.isChecked = originalStep.clickFirst
         checkBreakLoopSuccess.isChecked = originalStep.breakLoopOnSuccess
@@ -1164,15 +1125,19 @@ class RecognitionEditActivity : AppCompatActivity() {
                 .setPositiveButton(R.string.ok, null)
                 .show()
         }
-        // Button value pencils: each opens a small text edit dialog
-        // for that value (the value rows themselves are not editable).
+        // Button values: the text row keeps its pencil; the ID and
+        // description rows have no pencil — tapping the row itself
+        // opens the same small text edit dialog.
         findViewById<View>(R.id.btn_edit_button_text).setOnClickListener {
             showButtonValueEditDialog(editButtonText)
         }
-        findViewById<View>(R.id.btn_edit_button_id).setOnClickListener {
+        findViewById<View>(R.id.row_button_text).setOnClickListener {
+            showButtonValueEditDialog(editButtonText)
+        }
+        findViewById<View>(R.id.row_button_id).setOnClickListener {
             showButtonValueEditDialog(editButtonId)
         }
-        findViewById<View>(R.id.btn_edit_button_desc).setOnClickListener {
+        findViewById<View>(R.id.row_button_desc).setOnClickListener {
             showButtonValueEditDialog(editButtonDesc)
         }
         // Mode cards: tapping a card selects its mode.
@@ -1194,12 +1159,29 @@ class RecognitionEditActivity : AppCompatActivity() {
         findViewById<View>(R.id.card_after_jump).setOnClickListener {
             setAfterRetryMode(AfterRetryMode.JUMP)
         }
-        // Perform-click pencil: click-count picker dialog (the inline
-        // NumberPicker below stays as the second way to change it).
-        findViewById<View>(R.id.btn_edit_click_count).setOnClickListener {
-            showClickCountDialog()
+        // Perform-click count: tapping the inline "xN" badge edits it.
+        textClickCountBadge.setOnClickListener { showClickCountDialog() }
+        // Inline-value edit icons (validated dialogs, picker ranges).
+        findViewById<View>(R.id.btn_edit_tolerance).setOnClickListener {
+            showNumberEditDialog(
+                R.string.rec_tolerance_label, toleranceVal, 0, 100
+            ) { toleranceVal = it; refreshInlineValues() }
         }
-        btnPickRegion.setOnClickListener { launchPickRegion("area") }
+        findViewById<View>(R.id.btn_edit_retry_count).setOnClickListener {
+            showNumberEditDialog(
+                R.string.rec_retry_count_label, retryCountVal, 0, 10
+            ) { retryCountVal = it; refreshInlineValues() }
+        }
+        findViewById<View>(R.id.btn_edit_retry_delay).setOnClickListener {
+            showNumberEditDialog(
+                R.string.rec_retry_delay_label, retryDelayMsVal.toInt(), 0, 30000
+            ) { retryDelayMsVal = it.toLong(); refreshInlineValues() }
+        }
+        findViewById<View>(R.id.btn_edit_cycles).setOnClickListener {
+            showNumberEditDialog(
+                R.string.rec_cycles_title, stepCycles, 1, 99
+            ) { stepCycles = it; refreshInlineValues() }
+        }
         findViewById<Button>(R.id.btn_capture_template).setOnClickListener {
             launchPickRegion("template")
         }
@@ -1212,22 +1194,22 @@ class RecognitionEditActivity : AppCompatActivity() {
         btnPickAnchor.setOnClickListener {
             maybeShowAnchorGuideThenPick()
         }
-        findViewById<Button>(R.id.btn_pick_ocr_region).setOnClickListener {
-            launchPickRegion("ocr")
-        }
-        findViewById<Button>(R.id.btn_add_success_action).setOnClickListener {
+        // Small "+" rows open the same full ADD menu as before.
+        // (No separate pick-region button: OCR regions are picked
+        // through the Recognition area pill in the top card.)
+        findViewById<View>(R.id.row_add_success_action).setOnClickListener {
             openSubActionSheet("success")
         }
-        findViewById<Button>(R.id.btn_add_retry_action).setOnClickListener {
+        findViewById<View>(R.id.row_add_retry_action).setOnClickListener {
             openSubActionSheet("retry")
         }
-        findViewById<Button>(R.id.btn_add_after_action).setOnClickListener {
+        findViewById<View>(R.id.row_add_after_action).setOnClickListener {
             openSubActionSheet("after")
         }
-        findViewById<Button>(R.id.btn_success_jump_target).setOnClickListener {
+        findViewById<View>(R.id.btn_success_jump_target).setOnClickListener {
             showJumpDialog(isAfterRetry = false)
         }
-        findViewById<Button>(R.id.btn_after_jump_target).setOnClickListener {
+        findViewById<View>(R.id.btn_after_jump_target).setOnClickListener {
             showJumpDialog(isAfterRetry = true)
         }
         findViewById<Button>(R.id.btn_rec_cancel).setOnClickListener {
@@ -1244,7 +1226,6 @@ class RecognitionEditActivity : AppCompatActivity() {
         refreshJudgmentButton()
         refreshAreaViews()
         refreshButtonDetails()
-        refreshRegionStatuses()
         refreshTemplateViews()
         refreshColorViews()
         refreshAnchorViews()
@@ -1276,23 +1257,6 @@ class RecognitionEditActivity : AppCompatActivity() {
             AreaMode.FULLSCREEN -> getString(R.string.rec_area_fullscreen)
             AreaMode.REGION -> getString(R.string.rec_area_region)
         } + " \u25BE"
-        // The on-screen pick button is always visible: tapping it while
-        // the area is Fullscreen switches to Region first (see
-        // launchPickRegion). Hiding it left new Button steps with no
-        // pick control at all, which read as "no screen access".
-        btnPickRegion.visibility = View.VISIBLE
-    }
-
-    /** Region state is shown, never as editable data: picked / not picked. */
-    private fun refreshRegionStatuses() {
-        val text = if (hasRegion) {
-            getString(R.string.rec_region_picked)
-        } else {
-            getString(R.string.rec_region_not_picked)
-        }
-        textRegionStatus.text = text
-        textImageRegionStatus.text = text
-        textOcrRegionStatus.text = text
     }
 
     private fun refreshTemplateViews() {
@@ -1327,16 +1291,22 @@ class RecognitionEditActivity : AppCompatActivity() {
                 resources.getColor(R.color.divider, theme)
             )
         }
-        textToleranceValue.text = pickerTolerance.value.toString()
-        textClickCountValue.text = pickerClickCount.value.toString()
-        textClickCountBadge.text = "x" + pickerClickCount.value.toString()
-        textRetryCountValue.text = pickerRetryCount.value.toString()
-        textRetryDelayValue.text = (pickerRetryDelay.value * 100).toString() + " ms"
+        refreshInlineValues()
+    }
+
+    /** Writes every inline numeric value to its page view. */
+    private fun refreshInlineValues() {
+        if (!::textToleranceValue.isInitialized) return
+        textToleranceValue.text = toleranceVal.toString()
+        textClickCountBadge.text = "x$clickCountVal"
+        textRetryCountValue.text = retryCountVal.toString()
+        textRetryDelayValue.text = retryDelayMsVal.toString()
+        if (::textCyclesValue.isInitialized) {
+            textCyclesValue.text = stepCycles.toString()
+        }
     }
 
     private fun refreshSuccessVisibility() {
-        successClickGroup.visibility =
-            if (successMode == SuccessMode.CLICK) View.VISIBLE else View.GONE
         // One shared list: Custom actions, and "actions before jumping".
         successActionsGroup.visibility =
             if (successMode == SuccessMode.CUSTOM || successMode == SuccessMode.JUMP) {
@@ -1378,25 +1348,21 @@ class RecognitionEditActivity : AppCompatActivity() {
         return if (step != null) {
             "Step ${index + 1}: ${displayName(step.type)}"
         } else {
-            getString(R.string.rec_jump_none)
+            ""
         }
     }
 
+    /**
+     * Jump dropdown pills: the chosen step's label, or empty when
+     * unset (reference-style empty state — no status line). With no
+     * other step in the workflow the picker dialog itself shows the
+     * hint when tapped.
+     */
     private fun refreshJumpStatuses() {
-        textSuccessJumpStatus.text = if (!hasJumpTargets) {
-            getString(R.string.rec_jump_no_steps)
-        } else if (jumpTarget >= 0) {
-            jumpLabel(jumpTarget)
-        } else {
-            getString(R.string.rec_jump_none)
-        }
-        textAfterJumpStatus.text = if (!hasJumpTargets) {
-            getString(R.string.rec_jump_no_steps)
-        } else if (afterRetryJumpTarget >= 0) {
-            jumpLabel(afterRetryJumpTarget)
-        } else {
-            getString(R.string.rec_jump_none)
-        }
+        textSuccessJumpTarget.text =
+            if (jumpTarget >= 0) jumpLabel(jumpTarget) else ""
+        textAfterJumpTarget.text =
+            if (afterRetryJumpTarget >= 0) jumpLabel(afterRetryJumpTarget) else ""
     }
 
     /**
@@ -1679,23 +1645,51 @@ class RecognitionEditActivity : AppCompatActivity() {
             .show()
     }
 
-    /** Click-count picker behind the Perform-click card's pencil. */
-    private fun showClickCountDialog() {
-        val picker = NumberPicker(this).apply {
-            minValue = 1
-            maxValue = 10
-            value = pickerClickCount.value.coerceIn(1, 10)
+    /**
+     * Small validated number edit dialog, replacing the page's old
+     * NumberPickers. Out-of-range or non-numeric input toasts the
+     * allowed range and keeps the dialog open; Cancel changes
+     * nothing. [onValid] runs only with a value inside [min]..[max].
+     */
+    private fun showNumberEditDialog(
+        titleRes: Int,
+        current: Int,
+        min: Int,
+        max: Int,
+        onValid: (Int) -> Unit
+    ) {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setText(current.toString())
+            val pad = (16 * resources.displayMetrics.density).toInt()
+            setPadding(pad, pad, pad, pad)
         }
-        AlertDialog.Builder(this)
-            .setTitle(R.string.rec_click_count_label)
-            .setView(picker)
-            .setPositiveButton(R.string.ok) { _, _ ->
-                pickerClickCount.value = picker.value
-                textClickCountValue.text = picker.value.toString()
-                textClickCountBadge.text = "x" + picker.value.toString()
-            }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(titleRes)
+            .setView(input)
+            .setPositiveButton(R.string.ok, null)
             .setNegativeButton(R.string.cancel, null)
-            .show()
+            .create()
+        dialog.show()
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val value = input.text.toString().toIntOrNull()
+            if (value == null || value < min || value > max) {
+                Toast.makeText(
+                    this, getString(R.string.rec_number_invalid, min, max),
+                    Toast.LENGTH_SHORT
+                ).show()
+                return@setOnClickListener
+            }
+            onValid(value)
+            dialog.dismiss()
+        }
+    }
+
+    /** Click count behind the Perform-click card's inline "xN" badge. */
+    private fun showClickCountDialog() {
+        showNumberEditDialog(
+            R.string.rec_click_count_label, clickCountVal, 1, 10
+        ) { clickCountVal = it; refreshInlineValues() }
     }
 
     private fun showJudgmentDialog() {
@@ -1730,6 +1724,12 @@ class RecognitionEditActivity : AppCompatActivity() {
                 refreshAreaViews()
                 refreshButtonDetails()
                 refreshSaveEnabled()
+                // The area pill IS the region control now: choosing
+                // Region launches the overlay pick at once (the old
+                // full-width pick button is gone). Cancelling the
+                // overlay leaves the picked region untouched; choosing
+                // Region again re-picks. Fullscreen needs no pick.
+                if (selected == 1) launchPickRegion("area")
             }
             .setNegativeButton(R.string.cancel, null)
             .show()
@@ -2926,18 +2926,18 @@ class RecognitionEditActivity : AppCompatActivity() {
             regionRight = if (hasRegion) regionRight else -1,
             regionBottom = if (hasRegion) regionBottom else -1,
             colorValue = colorValue,
-            colorTolerance = pickerTolerance.value,
+            colorTolerance = toleranceVal,
             anchorX = anchorX,
             anchorY = anchorY,
-            stepCycles = pickerCycles.value,
+            stepCycles = stepCycles,
             ocrVariable = ocrVariable.ifBlank { "OCR_TEXT" },
             successMode = successMode,
-            clickCount = pickerClickCount.value,
+            clickCount = clickCountVal,
             customSteps = successActions.toList(),
             clickFirst = switchClickFirst.isChecked,
             jumpTarget = if (successMode == SuccessMode.JUMP) jumpTarget else -1,
-            retryCount = pickerRetryCount.value,
-            retryDelayMs = pickerRetryDelay.value * 100L,
+            retryCount = retryCountVal,
+            retryDelayMs = retryDelayMsVal,
             retrySteps = retryActions.toList(),
             afterRetryMode = afterRetryMode,
             afterRetrySteps = afterActions.toList(),

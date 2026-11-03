@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Home screen, reference style. All English only.
+         home_title_ref is used instead of home_title (which lives in
+         strings.xml and is owned by another workstream) so the title
+         can read "My configurations" without touching other files.
+         Triggers / Hide / Library menu labels reuse the existing
+         nav_triggers / nav_hide / nav_library strings (same text). -->
+    <string name="home_title_ref">My configurations</string>
+    <string name="home_menu_task_history">Task history</string>
+    <string name="home_menu_recycle_bin">Recycle bin</string>
+</resources>

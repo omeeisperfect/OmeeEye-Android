@@ -40,8 +40,8 @@
     <string name="nav_action_recents">Perform Recent Key</string>
 
     <!-- Break loop cards (reference-workflow clone), own wording -->
-    <string name="rec_break_loop_success">Break the loop after successful recognition</string>
-    <string name="rec_break_loop_failure">Break the loop if still not found after retries</string>
+    <string name="rec_break_loop_success">Whether to break the loop after successful identification?</string>
+    <string name="rec_break_loop_failure">Break loop</string>
 
     <!-- Loop action (reference-workflow clone), own wording -->
     <string name="step_loop">Loop action</string>
